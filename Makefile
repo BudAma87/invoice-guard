@@ -1,7 +1,9 @@
-.PHONY: install infra-up infra-down lint typecheck test api worker relay fmt
+.PHONY: install infra-up infra-down fmt lint typecheck test migrate seed api worker relay ingest web web-install
+
+PY ?= uv run
 
 install:
-	cd backend && uv sync --all-extras
+	uv sync --all-extras
 	pre-commit install
 
 infra-up:
@@ -11,22 +13,37 @@ infra-down:
 	docker compose down
 
 fmt:
-	cd backend && uv run ruff format . && uv run ruff check --fix .
+	$(PY) ruff format . && $(PY) ruff check --fix .
 
 lint:
-	cd backend && uv run ruff check . && uv run ruff format --check .
+	$(PY) ruff check . && $(PY) ruff format --check .
 
 typecheck:
-	cd backend && uv run mypy src
+	$(PY) mypy
 
 test: lint typecheck
-	cd backend && uv run pytest -q
+	$(PY) pytest -q
+
+migrate:
+	$(PY) alembic upgrade head
+
+seed:            ## wipe ./data and seed demo invoices through the real pipeline
+	$(PY) python -m scripts.seed_demo
 
 api:
-	cd backend && uv run uvicorn invoice_guard.api.main:app --reload --port 8000
+	$(PY) uvicorn services.api.main:app --reload --port 8000
 
 worker:
-	cd backend && uv run python -m invoice_guard.workers.consumer
+	$(PY) python -m services.worker.pipeline
 
 relay:
-	cd backend && uv run python -m invoice_guard.workers.relay
+	$(PY) python -m services.relay.relay
+
+ingest:
+	$(PY) python -m services.ingest.consumer
+
+web-install:
+	cd apps/web && npm install
+
+web:
+	cd apps/web && npm run dev

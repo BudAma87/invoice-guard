@@ -181,6 +181,12 @@ def test_uom_conversion_box_to_each():
     assert r["LINE_QTY:1"].status == Status.PASS  # 1 BOX = 10 EA = open qty
 
 
+def test_line_price_compared_per_po_unit():
+    # 1 BOX = 10 EA at 500.00 -> 50.00/EA == PO price 50.00
+    ln = Line(1, "Steel bolt", Decimal(1), 500_00, 500_00, "A-100", "BOX")
+    assert status(invoice(lines=(ln,)), context(), "LINE_PRICE:1") == Status.PASS
+
+
 def test_line_repeat_is_warn():
     a = Line(1, "Steel bolt", Decimal(5), 50_00, 250_00, "A-100")
     b = Line(2, "Steel bolt", Decimal(5), 50_00, 250_00, "A-100")

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from libs.rules._base import result, skipped
 from libs.rules.config import RuleSetConfig
-from libs.rules.money import fmt
+from libs.rules.money import fmt, round_minor
 from libs.rules.text import similarity
 from libs.rules.types import (
     Context,
@@ -257,35 +257,38 @@ def line_rules(inv: Invoice, ctx: Context, cfg: RuleSetConfig) -> list[RuleResul
             )
 
         pl = m.po_line
-        # LINE_PRICE
+        factor: Decimal | None = _uom_factor(ln, pl, ctx) if pl else Decimal(1)
+
+        # LINE_PRICE — compared per PO unit (a BOX of 10 at 500 is 50 per EA)
         if pl is None:
             out.append(skipped("LINE_PRICE", "LINE_PO_MATCH", S, G, line=n))
         elif ln.unit_price_minor is None:
             out.append(skipped("LINE_PRICE", f"line {n} unit_price", S, G, line=n))
+        elif factor is None:
+            out.append(skipped("LINE_PRICE", "LINE_UOM", S, G, line=n))
         else:
-            var = abs(Decimal(ln.unit_price_minor - pl.price_minor)) / Decimal(pl.price_minor)
-            signed = Decimal(ln.unit_price_minor - pl.price_minor) / Decimal(pl.price_minor)
+            per_po_unit = Decimal(ln.unit_price_minor) / factor
+            signed = (per_po_unit - pl.price_minor) / Decimal(pl.price_minor)
+            conv = f" ({fmt(round_minor(per_po_unit), c)}/{pl.uom})" if factor != 1 else ""
             out.append(
                 result(
                     "LINE_PRICE",
-                    var <= cfg.price_tolerance,
+                    abs(signed) <= cfg.price_tolerance,
                     S,
                     G,
-                    f"Unit price {fmt(ln.unit_price_minor, c)} vs PO {fmt(pl.price_minor, c)} "
-                    f"({'+' if signed > 0 else ''}{signed:.1%})",
+                    f"Unit price {fmt(ln.unit_price_minor, c)}{conv} vs PO "
+                    f"{fmt(pl.price_minor, c)} ({'+' if signed > 0 else ''}{signed:.1%})",
                     expected=pl.price_minor,
-                    actual=ln.unit_price_minor,
+                    actual=round_minor(per_po_unit),
                     line=n,
                     fields=(f"line:{n}:unit_price",),
                 )
             )
 
         # LINE_UOM + LINE_QTY
-        factor: Decimal | None = Decimal(1)
         if pl is None:
             out.append(skipped("LINE_UOM", "LINE_PO_MATCH", S, G, line=n))
         else:
-            factor = _uom_factor(ln, pl, ctx)
             out.append(
                 result(
                     "LINE_UOM",
