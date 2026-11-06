@@ -1,61 +1,58 @@
 # invoice-guard
 
-AI-powered supplier invoice validation: OCR → LangGraph agent extraction → deterministic rule validation → human-in-the-loop review → exactly-once ERP posting.
+Supplier invoice PDF → **exactly one** ERP posting. A model only *reads* the invoice; a
+deterministic rule engine decides; anything uncertain goes to a person. Built to the
+[Invoice Validation Pipeline TSD v2](docs/TSD_v2.pdf).
 
-> Status: **scaffold**. Folder structure, tooling and CI are in place; node and rule logic are stubs (`TODO`) pending TSD v2 sign-off.
+> Status: **Phase 1 (foundation)** — state DB, inbox, rule engine, fake ERP, outbox relay,
+> review API and the review UI on SQLite. Kafka/LLM/Postgres paths are wired but run in
+> dev with a fake ERP and demo extraction sidecars.
 
-## What it validates
-- **Invoice date** — not future, ≤ 90 days old, ≥ PO date, open ERP period
-- **Total amount** — Σ(qty × unit price) + tax + charges = total (± per-currency tolerance)
-- **Line items** — product name/code, quantity, unit price, line total vs PO lines + item master
-
-## Architecture (short)
-```
-Kafka → ingest → preprocess → ocr → supplier_template ─┬─(hit)──────────────┐
-                                                        └─(miss)→ extract (LLM) ┤
-                       normalise → validate → [repair (LLM, ≤1)] → dedupe → route
-route → auto_approve ─────────────────────────────┐
-      → human_review (interrupt) → checker (≥ LKR 1M) ─┴→ post_erp (outbox) → ERP
-```
-- Deterministic LangGraph; LLM only in `extract` and `repair` (Claude Haiku → Sonnet on escalation)
-- Checkpointer: SQLite (dev) / Postgres (prod), `thread_id = invoice_id`
-- Full design: [`docs/`](docs/)
-
-## Tech stack
-| Layer | Tech |
+## Guarantees
+| Goal | How |
 |---|---|
-| Orchestration | LangGraph, Anthropic SDK, Pydantic |
-| OCR | PaddleOCR + OpenCV |
-| API / workers | FastAPI, aiokafka, SQLAlchemy 2, Alembic |
-| DB | SQLite (dev) → Postgres 16 (prod) |
-| UI | Next.js (App Router), TypeScript, Tailwind, shadcn/ui |
-| Infra (local) | Docker Compose: Kafka, Postgres, Redis |
+| No double posting | Unique keys on message, file (`pdf_sha256`) and business document; transactional outbox; relay looks up the ERP by external ref (`invoice_id`) before any post |
+| No lost invoice | Inbox written before the Kafka offset commits; every step commits before the next; lease sweeper; extraction failures become manual-entry tasks |
+| Uncertain means human | Any FAIL/SKIPPED rule or field confidence < 0.85 → review queue |
+| Controls | Maker-checker ≥ LKR 1M (checker ≠ maker), mandatory reason codes, SLA timers in business hours, entity-scoped access (404 outside scope), append-only hash-chained audit log |
 
-## Quick start
+## Quick start (no Docker, no API key)
 ```bash
-cp .env.example .env            # add ANTHROPIC_API_KEY
-make infra-up                   # Kafka, Postgres, Redis
-make install                    # backend deps (uv) + pre-commit hooks
-make test                       # lint + types + unit tests
-make api                        # FastAPI on http://localhost:8000/docs
+python -m venv .venv && .venv/Scripts/pip install -e ".[dev]"   # or: uv sync --all-extras
+python -m scripts.seed_demo                 # runs the real pipeline on 19 generated PDFs
+uvicorn services.api.main:app --port 8000   # review API  → http://localhost:8000/docs
+cd apps/web && npm install && npm run dev   # review UI   → http://localhost:3000
 ```
-Frontend: see [`frontend/README.md`](frontend/README.md).
+Switch identity in the sidebar (dev auth) to try maker → checker: e.g. approve the
+*Asia Pacific Logistics* invoice as **Nimali Silva**, then check it as **Kasun Fernando**.
+Ops dashboard: **Anushka Wijesinghe** (supervisor).
 
-## Repository layout
+Demo scenarios: auto-pass, the TSD wireframe invoice (ambiguous date, closed period, +0.50
+diff, unmatched line), USD above LKR 1M, exact re-scan duplicate, near duplicate
+(KP-1023 vs KP-1023A), blocked vendor, price/qty variance, low confidence only, unreadable PDF.
+
+## Layout (TSD §10)
 ```
-backend/src/invoice_guard/
-  graph/      LangGraph state, builder, routing, nodes/
-  rules/      deterministic validation rules (no LLM)
-  llm/        Anthropic client, model tiers, prompts, output schemas
-  ocr/        PaddleOCR wrapper
-  erp/        ERP adapter protocol + fake
-  db/         SQLAlchemy models, session
-  api/        FastAPI app + routes (queue, invoices, ops)
-  workers/    Kafka consumer, outbox relay
-frontend/     Next.js review UI
-evals/        labelled invoices + extraction scoring
-docs/         TSD and architecture notes
+apps/web/          Next.js 15: review queue, workspace, checker view, ops dashboard
+services/ingest/   Kafka consumer → inbox (dedupe by message id + file hash)
+services/worker/   extract → normalise → enrich → validate → route; lease sweeper
+services/api/      review, validate, decision, checker, ops endpoints
+services/relay/    outbox → ERP adapter (the only ERP writer)
+libs/rules/        pure, versioned rule engine (no I/O)
+libs/core/         normalisation, enrichment, routing, SLA, review workflow
+libs/erp_adapter/  protocol + fake ERP with fault injection
+libs/llm_gateway/  structured outputs, token bucket, circuit breaker, fallback model
+libs/db/           SQLAlchemy models, state machine, Alembic migrations
+evals/             labelled invoices + scoring (Phase 2)
 ```
 
-## Contributing
-Branch from `main` as `feat/…`, `fix/…`, `chore/…`; open a PR using the template. CI must pass and one review is required.
+## Commands
+`make test` (ruff + mypy + 68 pytest incl. relay-crash chaos test) · `make migrate` ·
+`make seed` · `make api` · `make worker` · `make relay` · `make web`.
+Set `ANTHROPIC_API_KEY` to extract real PDFs (primary `claude-haiku-5-5`, fallback
+`claude-sonnet-5-5`, configurable in `.env`).
+
+## Not yet (later phases)
+OIDC SSO (dev header auth today) · Postgres + `SKIP LOCKED` load test · Redis token bucket
+across workers · OCR for scanned pages · daily reconciliation job · OpenTelemetry · S3/Blob
+store · Playwright + axe-core CI · config-admin UI for versioned thresholds.

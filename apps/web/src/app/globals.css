@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/* Theme follows the OS unless the user picks one (data-theme on <html>). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ------------------------------------------------------------------ tokens
+   Neutral surfaces, ONE accent for primary actions, status colours that keep
+   >= 4.5:1 on their own tint and on the surface (WCAG 2.2 AA 1.4.3).        */
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f1f1ee;
+  --surface-3: #e9e9e5;
+  --border: #e2e2dd;
+  --border-strong: #c9c9c2;
+  --text: #191917;
+  --text-2: #4a4a45;
+  --muted: #6a6a64;
+  --accent: #2550c8;
+  --accent-hover: #1d42a8;
+  --accent-fg: #ffffff;
+  --accent-tint: #e9effc;
+  --pass: #0b6b35;
+  --pass-tint: #e5f4ea;
+  --warn: #8a5000;
+  --warn-tint: #fcf1dc;
+  --warn-line: #d98e04;
+  --fail: #b3161e;
+  --fail-tint: #fbe8e9;
+  --skip: #55555a;
+  --skip-tint: #ececef;
+  --focus: #2550c8;
+  --shadow: 0 1px 2px rgb(20 20 15 / 0.06), 0 1px 1px rgb(20 20 15 / 0.04);
+  --shadow-lg: 0 12px 32px rgb(20 20 15 / 0.14), 0 2px 6px rgb(20 20 15 / 0.08);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --grid: #ebebe6;
+  --base: 14px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f11;
+    --surface: #17171a;
+    --surface-2: #1f1f23;
+    --surface-3: #28282d;
+    --border: #2c2c32;
+    --border-strong: #3d3d45;
+    --text: #ededef;
+    --text-2: #c4c4c9;
+    --muted: #9a9aa2;
+    --accent: #7c9dff;
+    --accent-hover: #9bb4ff;
+    --accent-fg: #0b1430;
+    --accent-tint: #1b2440;
+    --pass: #5fd38d;
+    --pass-tint: #132a1d;
+    --warn: #f2b84b;
+    --warn-tint: #2e2310;
+    --warn-line: #f2b84b;
+    --fail: #ff8a8a;
+    --fail-tint: #351718;
+    --skip: #a8a8b0;
+    --skip-tint: #24242a;
+    --focus: #9bb4ff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --grid: #26262b;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f0f11;
+  --surface: #17171a;
+  --surface-2: #1f1f23;
+  --surface-3: #28282d;
+  --border: #2c2c32;
+  --border-strong: #3d3d45;
+  --text: #ededef;
+  --text-2: #c4c4c9;
+  --muted: #9a9aa2;
+  --accent: #7c9dff;
+  --accent-hover: #9bb4ff;
+  --accent-fg: #0b1430;
+  --accent-tint: #1b2440;
+  --pass: #5fd38d;
+  --pass-tint: #132a1d;
+  --warn: #f2b84b;
+  --warn-tint: #2e2310;
+  --warn-line: #f2b84b;
+  --fail: #ff8a8a;
+  --fail-tint: #351718;
+  --skip: #a8a8b0;
+  --skip-tint: #24242a;
+  --focus: #9bb4ff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --grid: #26262b;
+  color-scheme: dark;
+}
+
+:root[data-density="compact"] {
+  --base: 13px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-fg-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-tint: var(--accent-tint);
+  --color-pass: var(--pass);
+  --color-pass-tint: var(--pass-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-warn-line: var(--warn-line);
+  --color-fail: var(--fail);
+  --color-fail-tint: var(--fail-tint);
+  --color-skip: var(--skip);
+  --color-skip-tint: var(--skip-tint);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "Cascadia Mono", monospace;
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+}
+
+html {
+  font-size: var(--base);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-width: 1280px; /* TSD: reference 1440, minimum 1280 */
+}
+
+@media (max-width: 1279px) {
+  body {
+    min-width: 0;
+  }
+}
+
+/* Numbers built for checking */
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* One-shot highlight when a rule result changes after live re-validation */
+@keyframes changed {
+  0% { background: var(--accent-tint); }
+  100% { background: transparent; }
+}
+.changed-once {
+  animation: changed 1.2s ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* react-pdf text layer off; we draw our own evidence overlays */
+.react-pdf__Page__canvas {
+  display: block;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
