@@ -44,3 +44,29 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history for the secret scan
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Python dependency audit
+        run: |
+          uv export --all-extras --no-hashes --no-emit-project -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit -r "$RUNNER_TEMP/req.txt" --progress-spinner off
+      - name: Python static analysis (medium+ severity)
+        run: uvx bandit -q -r libs services scripts --severity-level medium
+      - name: npm production audit
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=high
+      - name: Secret scan
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0             git /repo --redact --no-banner

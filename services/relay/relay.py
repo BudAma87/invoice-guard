@@ -39,7 +39,9 @@ def backoff(attempts: int) -> timedelta:
 
 
 def _postable(inv: m.Invoice) -> PostableInvoice:
-    assert inv.supplier_id and inv.invoice_no_norm and inv.invoice_date and inv.currency
+    # Explicit check, not `assert`: asserts vanish under `python -O`, and this guards a posting.
+    if not (inv.supplier_id and inv.invoice_no_norm and inv.invoice_date and inv.currency):
+        raise ERPBusinessError("Missing supplier, invoice number, date or currency; not posted")
     return PostableInvoice(
         entity_id=inv.entity_id,
         supplier_id=inv.supplier_id,

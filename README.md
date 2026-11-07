@@ -64,6 +64,7 @@ variance against the PO, each failing rule explained under its line.
 # 1. Python deps (Windows paths shown; on macOS/Linux use .venv/bin/...)
 python -m venv .venv
 .venv/Scripts/pip install -e ".[dev]"          # or: uv sync --all-extras
+cp .env.example .env                            # turns on DEV_AUTH (X-User demo identities)
 
 # 2. Demo data: runs the REAL pipeline (ingest → worker → rules → relay) on 19 generated PDFs
 .venv/Scripts/python -m scripts.seed_demo
@@ -75,6 +76,8 @@ python -m venv .venv
 cd apps/web && npm install && npm run dev                            # review UI  → :3000
 ```
 
+- `DEV_AUTH` is **off** unless `.env` (or the environment) turns it on. Off, the API fails closed
+  (`501 OIDC not configured`) and `/docs` is not served. Never enable it outside local dev.
 - Port 3000 taken? `npx next dev -p 3100` (the UI proxies `/api` to `:8000`, so any port works).
 - Without the **relay**, approvals stop at `APPROVED_*`: the relay is the only thing allowed to
   talk to the ERP.

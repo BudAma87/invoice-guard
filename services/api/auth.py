@@ -34,7 +34,9 @@ DEV_USERS: dict[str, User] = {
 def current_user(x_user: str | None = Header(default=None)) -> User:
     if not settings.dev_auth:
         raise HTTPException(501, "OIDC not configured")  # wire the IdP here
-    user = DEV_USERS.get(x_user or "n.silva")
+    if not x_user:
+        raise HTTPException(401, "X-User header required")
+    user = DEV_USERS.get(x_user)
     if user is None:
         raise HTTPException(401, "Unknown user")
     return user

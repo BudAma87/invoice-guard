@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import time
+from collections import defaultdict, deque
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any, Literal
@@ -22,7 +24,7 @@ from libs.core.entities import entity as entity_of
 from libs.core.reconcile import run_reconciliation
 from libs.core.runtime import erp_client, message_ledger
 from libs.core.service import open_task
-from libs.core.store import ObjectStore, verify
+from libs.core.store import ObjectStore, valid_sha, verify
 from libs.db import models as m
 from libs.db.models import Base, utcnow
 from libs.db.session import engine
@@ -43,7 +45,66 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="invoice-guard review API", version="0.2.0", lifespan=lifespan)
+_docs = settings.dev_auth  # interactive docs and schema only in dev
+app = FastAPI(
+    title="invoice-guard review API",
+    version="0.2.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs else None,
+    redoc_url="/redoc" if _docs else None,
+    openapi_url="/openapi.json" if _docs else None,
+)
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Cache-Control": "no-store",
+}
+API_CSP = "default-src 'none'; frame-ancestors 'none'"
+
+
+class RateLimiter:
+    """Sliding one-minute window per client (user header + IP). In-process only: front the
+    API with a gateway limit when it runs as more than one replica."""
+
+    def __init__(self, per_min: int):
+        self.per_min = per_min
+        self.hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, now: float) -> bool:
+        q = self.hits[key]
+        while q and q[0] <= now - 60:
+            q.popleft()
+        if len(q) >= self.per_min:
+            return False
+        q.append(now)
+        return True
+
+
+limiter = RateLimiter(settings.api_rate_limit_per_min)
+
+
+@app.middleware("http")
+async def _harden(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    if limiter.per_min > 0 and request.url.path != "/health":
+        who = request.headers.get("x-user", "")
+        key = f"{who if who in DEV_USERS else '?'}|{client_ip(request)}"
+        if not limiter.allow(key, time.monotonic()):
+            return JSONResponse(
+                {"detail": "Too many requests"}, status_code=429, headers={"Retry-After": "60"}
+            )
+    response = await call_next(request)
+    for k, v in SECURITY_HEADERS.items():
+        response.headers.setdefault(k, v)
+    if not request.url.path.startswith(("/docs", "/redoc")):
+        response.headers.setdefault("Content-Security-Policy", API_CSP)
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
@@ -225,6 +286,8 @@ def pdf(
 
 @app.get("/files/{sha}.pdf")
 def file(sha: str, exp: int = Query(...), sig: str = Query(...)) -> Response:
+    if not valid_sha(sha):
+        raise HTTPException(404)
     if not verify(sha, exp, sig):
         raise HTTPException(403, "Link expired")
     store = ObjectStore()
@@ -321,7 +384,7 @@ async def decision(
 
 class CheckIn(BaseModel):
     action: Literal["approve", "send_back"]
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 @app.post("/invoices/{invoice_id}/check")
