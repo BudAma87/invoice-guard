@@ -40,6 +40,12 @@ async def seed() -> None:
     erp = CachedERP(FakeERP(persist_path=data / "fake_erp.json"))
     sidecars: dict[str, dict] = {}
     now = utcnow()
+    # Dev stand-in for the Kafka topic: what the channel delivered, written independently
+    # of the inbox so reconciliation has something real to compare against.
+    from libs.core.ledger import FileLedger
+    from libs.core.runtime import ledger_path
+
+    ledger = FileLedger(ledger_path())
 
     # Order matters: originals must post before their duplicates arrive.
     for i, spec in enumerate(SCENARIOS):
@@ -48,6 +54,7 @@ async def seed() -> None:
         if ext:
             sidecars[sha] = ext
             (data / "sidecars" / f"{sha}.json").write_text(json.dumps(ext))
+        ledger.append(f"msg-{spec.key}", spec.entity, utcnow())
         with SessionLocal() as s:
             r = receive(
                 s,
@@ -64,6 +71,7 @@ async def seed() -> None:
         print(f"{spec.key:12} {spec.entity} -> {state:20} {spec.note}  ({r.invoice_id[:8]})")
 
     # Redelivery of a Kafka message: no-op, one invoice
+    ledger.append("msg-clean-steel", "E01", utcnow())
     pdf, _ = render(SCENARIOS[0])
     with SessionLocal() as s:
         r = receive(s, store, message_id="msg-clean-steel", entity_id="E01", pdf=pdf)
@@ -98,6 +106,20 @@ async def seed() -> None:
         deliver_pending(s, LogNotifier(), utcnow())
         s.commit()
     print(f"SLA pass: escalated {rep.escalated}, notifications {rep.notifications}")
+
+    # A message the channel delivered but ingest never took in (a crashed consumer that
+    # committed its offset too early). Reconciliation is what catches this.
+    ledger.append("msg-lost-demo-0001", "E01", utcnow())
+    from libs.core.entities import ENTITIES
+    from libs.core.reconcile import run_reconciliation
+
+    for eid in ENTITIES:
+        with SessionLocal() as s:
+            run = await run_reconciliation(
+                s, erp, ledger, eid, ENTITIES[eid].today(utcnow()), utcnow(), trigger="manual"
+            )
+            s.commit()
+            print(f"Reconciliation {eid}: {run.status}, {run.differences} difference(s)")
     print(f"\nSeeded {len(SCENARIOS)} invoices into {settings.database_url}")
 
 

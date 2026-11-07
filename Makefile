@@ -39,7 +39,7 @@ worker:
 relay:
 	$(PY) python -m services.relay.relay
 
-scheduler:       ## SLA escalation job, every 5 minutes
+scheduler:       ## SLA escalation + daily reconciliation, every 5 minutes
 	$(PY) python -m services.scheduler
 
 ingest:

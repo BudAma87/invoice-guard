@@ -1,15 +1,22 @@
-"""SLA scheduler process: `python -m services.scheduler`. One pass every 5 minutes.
+"""Scheduler process: `python -m services.scheduler`. One pass every 5 minutes:
 
-Running two copies is safe: escalations are guarded by the task's escalation level and
-notifications by a unique (task, kind) key.
+- SLA escalation for every open review task;
+- daily reconciliation per entity once its local time passes 23:30, catching up any day
+  of the last week that has no finished run.
+
+Running two copies is safe for escalation (guarded by level and a unique notification key);
+for reconciliation a duplicate run only stores a second, identical report.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
 from libs.core.escalation import LogNotifier, deliver_pending, sla_tick
+from libs.core.reconcile import due, run_reconciliation
+from libs.core.runtime import erp_client, message_ledger
 from libs.db.models import utcnow
 from libs.db.session import SessionLocal
 
@@ -35,6 +42,24 @@ def run_once() -> None:
         sent,
         rep.reprioritised,
     )
+    asyncio.run(reconcile_due())
+
+
+async def reconcile_due() -> None:
+    erp, ledger = erp_client(), message_ledger()
+    with SessionLocal() as s:
+        todo = due(s, utcnow())
+    for entity_id, day in todo:
+        with SessionLocal() as s:
+            run = await run_reconciliation(s, erp, ledger, entity_id, day, utcnow())
+            s.commit()
+            log.info(
+                "reconciliation %s %s: %s, %d difference(s)",
+                entity_id,
+                day,
+                run.status,
+                run.differences,
+            )
 
 
 def main() -> None:  # pragma: no cover
@@ -43,7 +68,7 @@ def main() -> None:  # pragma: no cover
         try:
             run_once()
         except Exception:
-            log.exception("sla tick failed; retrying next interval")
+            log.exception("scheduler pass failed; retrying next interval")
         time.sleep(INTERVAL_S)
 
 

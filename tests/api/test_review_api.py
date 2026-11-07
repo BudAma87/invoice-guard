@@ -1,6 +1,7 @@
 """Review workflow through the HTTP API (queue -> workspace -> approve, maker -> checker)."""
 
 from libs.db import models as m
+from libs.db.models import utcnow
 from tests.conftest import Env
 
 
@@ -241,3 +242,38 @@ async def test_hold_pauses_sla_and_cannot_stack(env: Env, api):
         json={"action": "hold", "comment": "again"},
     )
     assert r.status_code == 409
+
+
+async def test_reconciliation_api(env: Env, api, monkeypatch, tmp_path):
+    from libs.core.ledger import FileLedger
+    from services.api import main
+
+    led = FileLedger(tmp_path / "ledger.jsonl")
+    monkeypatch.setattr(main, "message_ledger", lambda: led)
+    await env.run("clean-steel")
+    await env.relay()
+    led.append("msg-clean-steel", "E01", utcnow())
+    led.append("msg-lost", "E01", utcnow())
+
+    assert (
+        api.post(
+            "/ops/reconciliation/run", headers=H("n.silva"), json={"entity": "E01"}
+        ).status_code
+        == 403
+    )
+    assert (
+        api.post(
+            "/ops/reconciliation/run", headers=H("r.jayasuriya"), json={"entity": "E01"}
+        ).status_code
+        == 403
+    )  # auditors read only
+    r = api.post("/ops/reconciliation/run", headers=H("a.wijesinghe"), json={"entity": "E01"})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["status"] == "DIFFERENCES" and run["trigger"] == "manual"
+    assert [i["kind"] for i in run["items"]] == ["MESSAGE_WITHOUT_INBOX"]
+
+    runs = api.get("/ops/reconciliation", headers=H("r.jayasuriya")).json()["runs"]
+    assert runs[0]["run_id"] == run["run_id"]
+    summary = api.get("/ops/metrics", headers=H("a.wijesinghe")).json()["reconciliation"]
+    assert summary[0]["status"] == "DIFFERENCES" and summary[0]["differences"] == 1

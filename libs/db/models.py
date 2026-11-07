@@ -338,6 +338,51 @@ class Notification(Base):
     __table_args__ = (UniqueConstraint("task_id", "kind"),)
 
 
+class ReconStatus(StrEnum):
+    RUNNING = "RUNNING"
+    OK = "OK"  # every check ran, no differences
+    DIFFERENCES = "DIFFERENCES"  # every check ran, at least one difference
+    PARTIAL = "PARTIAL"  # a source was unavailable; the checks that ran are recorded
+    ERROR = "ERROR"  # could not complete (e.g. ERP down); retried on the next tick
+
+
+class ReconciliationRun(Base):
+    """Daily lost-invoice net (TSD §9), one row per entity per business day per attempt."""
+
+    __tablename__ = "reconciliation_run"
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    entity_id: Mapped[str] = mapped_column(String(16), index=True)
+    business_date: Mapped[date] = mapped_column(Date, index=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="schedule")  # schedule | manual
+    status: Mapped[str] = mapped_column(String(12), default=ReconStatus.RUNNING)
+    counts: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    skipped: Mapped[list[Any]] = mapped_column(default=list)  # checks not run, and why
+    differences: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+    items: Mapped[list[ReconciliationItem]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="ReconciliationItem.id"
+    )
+
+
+class ReconciliationItem(Base):
+    __tablename__ = "reconciliation_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("reconciliation_run.run_id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    severity: Mapped[str] = mapped_column(String(8))  # critical | high
+    invoice_id: Mapped[str | None] = mapped_column(String(36))
+    message_id: Mapped[str | None] = mapped_column(String(128))
+    erp_doc_no: Mapped[str | None] = mapped_column(String(64))
+    detail: Mapped[str] = mapped_column(Text)
+
+    run: Mapped[ReconciliationRun] = relationship(back_populates="items")
+
+
 class OutboxStatus(StrEnum):
     PENDING = "PENDING"
     UNKNOWN = "UNKNOWN"  # ambiguous ERP timeout: look up before any retry

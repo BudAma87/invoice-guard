@@ -5,8 +5,8 @@ deterministic rule engine decides whether it can post; anything uncertain goes t
 Built to the [Invoice Validation Pipeline TSD v2](docs/TSD_v2.pdf).
 
 > **Status: Phase 1 (foundation).** State DB, inbox, rule engine, fake ERP, outbox relay,
-> review API, review UI and the SLA escalation job, running on SQLite. Exercised end to end by
-> 79 automated tests,
+> review API, review UI, SLA escalation and daily reconciliation, running on SQLite. Exercised
+> end to end by 96 automated tests,
 > a scripted walkthrough and a real-browser run of the UI.
 > Wired but **not yet exercised against real systems**: the Kafka consumer, the Anthropic
 > extractor (dev uses pre-recorded "sidecar" extractions) and Postgres (`SKIP LOCKED`).
@@ -71,7 +71,7 @@ python -m venv .venv
 # 3. Processes, one terminal each
 .venv/Scripts/python -m uvicorn services.api.main:app --port 8000   # review API → :8000/docs
 .venv/Scripts/python -m services.relay.relay                        # posts approved invoices
-.venv/Scripts/python -m services.scheduler                          # SLA escalation, every 5 min
+.venv/Scripts/python -m services.scheduler                          # SLA + reconciliation, every 5 min
 cd apps/web && npm install && npm run dev                            # review UI  → :3000
 ```
 
@@ -102,7 +102,8 @@ Keyboard: **J/K** next/previous issue · **E** edit field · **A** approve · **
 Demo scenarios: auto-pass · wireframe invoice (ambiguous date, closed period, +0.50 diff,
 unmatched line) · USD above LKR 1M · exact re-scan duplicate · near duplicate
 (KP-1023 vs KP-1023A) · blocked vendor · price +3.5% and qty over PO · low confidence only ·
-unreadable PDF → manual entry · Kafka redelivery.
+unreadable PDF → manual entry · Kafka redelivery · a message that never reached the inbox
+(reconciliation catches it: **Ops dashboard → Daily reconciliation**).
 
 ---
 
@@ -140,6 +141,15 @@ person sees it in the compare view. Dropping it silently would be the "lost invo
   and tampering is detectable (`verify_chain`).
 - Every worker step commits before the next starts; a 120 s lease plus a sweeper returns
   stuck work. Extraction that finally fails becomes a **manual-entry task**, not a dead letter.
+- **Daily reconciliation** (`libs/core/reconcile.py`) is the net under all of that. At 23:30 in
+  each entity's time zone it checks the day three ways: every message the channel delivered has
+  an inbox row; every invoice POSTED that day has its ERP document; every pipeline ERP document
+  has a POSTED invoice. The same pass flags duplicate ERP documents for one invoice (a double
+  payment) and number or amount mismatches. Differences are stored, written to the invoice's
+  audit trail, paged and shown on the ops dashboard; a source it can't read makes the run
+  PARTIAL or ERROR, never a silent pass. Missed days (scheduler down) are caught up for a week.
+  "What the channel delivered" must be read independently of the inbox: the Kafka topic in
+  production, a ledger file the demo seed writes in dev (`MESSAGE_LEDGER=file|kafka|none`).
 
 ### 3. Uncertain means human → the model reads, code decides
 
@@ -238,7 +248,9 @@ Written up in [`docs/README.md`](docs/README.md); in short:
 | Real extraction untested | Sidecars stand in for the model | Run the eval set (500 labelled invoices) through `AnthropicExtractor` |
 | Fake ERP doesn't consume PO balances | Repeat invoices against one PO keep passing `LINE_QTY` | Track invoiced qty, or read it from the real ERP |
 | Token bucket is per process | Several workers could exceed provider limits | Redis-backed bucket |
-| No daily reconciliation, OCR, OpenTelemetry, S3/Blob, Playwright/axe CI | — | Phase 2–3 per the TSD rollout |
+| Kafka ledger untested | Reconciliation's channel check runs on the dev ledger file; `KafkaLedger` has not met a broker | Verify against the real topic in the shadow run |
+| No pager integration | Reconciliation alerts are ERROR log lines | PagerDuty / Opsgenie `Pager` |
+| No OCR, OpenTelemetry, S3/Blob, Playwright/axe CI | — | Phase 2–3 per the TSD rollout |
 | Rule thresholds live in code | Changing one needs a deploy, not config-admin approval | Versioned rule sets per entity in the DB with a two-admin approval |
 
 ---
@@ -250,7 +262,7 @@ services/ingest/   Kafka consumer → inbox (dedupe by message id + file hash)
 services/worker/   extract → normalise → enrich → validate → route; lease sweeper
 services/api/      FastAPI: queue, invoice, validate, decision, check, ops
 services/relay/    outbox → ERP adapter (the only ERP writer)
-services/scheduler/ SLA escalation every 5 minutes
+services/scheduler/ every 5 min: SLA escalation; daily reconciliation after 23:30
 libs/rules/        pure, versioned rule engine (no I/O)
 libs/core/         normalisation, enrichment, routing, SLA, review workflow
 libs/erp_adapter/  ERP protocol + fake ERP with fault injection

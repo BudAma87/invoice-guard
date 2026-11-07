@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     kafka_topic_posted: str = "invoices.posted"
     kafka_topic_dlq: str = "invoices.dlq"
 
+    # Reconciliation: where "what the channel received" is read from (file | kafka | none)
+    message_ledger: str = "file"
+
     # Leases (seconds)
     extract_lease_s: int = 120
     review_lease_s: int = 15 * 60
