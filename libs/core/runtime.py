@@ -8,6 +8,7 @@ from pathlib import Path
 
 from libs.config import settings
 from libs.core.enrich import CachedERP
+from libs.core.ledger import FileLedger, KafkaLedger, MessageLedger, NullLedger
 from libs.erp_adapter.fake import FakeERP
 from libs.llm_gateway.client import AnthropicExtractor, Extractor, SidecarExtractor
 
@@ -29,3 +30,15 @@ def extractor_client() -> Extractor:
             {p.stem: json.loads(p.read_text()) for p in sidecar_dir.glob("*.json")}
         )
     return AnthropicExtractor()
+
+
+def message_ledger() -> MessageLedger:
+    if settings.message_ledger == "kafka":
+        return KafkaLedger(settings.kafka_bootstrap, settings.kafka_topic_in)
+    if settings.message_ledger == "file":
+        return FileLedger(ledger_path())
+    return NullLedger()
+
+
+def ledger_path() -> Path:
+    return Path(settings.object_store_dir).parent / "kafka_ledger.jsonl"

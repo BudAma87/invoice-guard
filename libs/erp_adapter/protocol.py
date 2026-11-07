@@ -4,7 +4,7 @@ reference — that lookup is what makes posting exactly-once (TSD §9)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -19,6 +19,7 @@ class ERPDoc:
     entity_id: str
     total_minor: int
     currency: str
+    posted_at: str | None = None  # ISO-8601 UTC, when the ERP accepted it
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,12 @@ class ERPUnavailable(Exception):
 class ERPAdapter(Protocol):
     async def find_by_external_ref(self, entity_id: str, ext_ref: UUID) -> ERPDoc | None: ...
     async def post_invoice(self, inv: PostableInvoice, ext_ref: UUID) -> ERPDoc: ...
+    async def list_documents(
+        self, entity_id: str, since: datetime, until: datetime
+    ) -> list[ERPDoc]:
+        """AP documents the pipeline created (external ref set), posted in [since, until)."""
+        ...
+
     async def find_vendors(
         self, entity_id: str, name: str | None, tax_id: str | None
     ) -> list[Vendor]: ...

@@ -64,6 +64,9 @@ class CachedERP:
     async def post_invoice(self, inv, ref):
         return await self.inner.post_invoice(inv, ref)
 
+    async def list_documents(self, e, since, until):  # never cached: reconciliation reads truth
+        return await self.inner.list_documents(e, since, until)
+
 
 def business_key(supplier_id: str | None, inv: rt.Invoice) -> str | None:
     if not (

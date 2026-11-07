@@ -1,7 +1,21 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Clock, Copy, Inbox, PauseCircle, Send, ServerCrash, Timer, Zap } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  Check,
+  Clock,
+  Copy,
+  Inbox,
+  MinusCircle,
+  PauseCircle,
+  Play,
+  Send,
+  ServerCrash,
+  Timer,
+  X,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -19,10 +33,10 @@ import {
 } from "recharts";
 
 import { useMe } from "@/components/providers";
-import { Banner, Card, Skeleton } from "@/components/ui/primitives";
-import { api } from "@/lib/api";
-import { cn } from "@/lib/format";
-import type { OpsMetrics } from "@/lib/types";
+import { Banner, Button, Card, Skeleton } from "@/components/ui/primitives";
+import { api, ApiError } from "@/lib/api";
+import { cn, dateTime } from "@/lib/format";
+import type { OpsMetrics, ReconRun, ReconStatus } from "@/lib/types";
 
 // Validated with dataviz/scripts/validate_palette.js (slots 1-2, light + dark): all checks pass.
 const S1 = "var(--series-1)";
@@ -94,6 +108,8 @@ export default function OpsPage() {
               tone={m.tiles.oldest_open && m.tiles.oldest_open.age_minutes > 240 ? "fail" : undefined} />
             <Tile label="On hold" value={m.tiles.on_hold} href="/queue?sla=on_hold" Icon={PauseCircle} />
           </section>
+
+          <Reconciliation entity={entity} canRun={!!me?.roles.includes("supervisor")} />
 
           <section className="mt-4 grid grid-cols-2 gap-3">
             <ArrivalsChart m={m} />
@@ -288,5 +304,128 @@ function BacklogChart({ m }: { m: OpsMetrics }) {
         </LineChart>
       </ResponsiveContainer>
     </ChartCard>
+  );
+}
+
+/* ----------------------------------------------------------- reconciliation */
+
+const RECON: Record<ReconStatus, { label: string; cls: string; Icon: typeof Check }> = {
+  OK: { label: "Matched", cls: "bg-pass-tint text-pass", Icon: Check },
+  DIFFERENCES: { label: "Differences", cls: "bg-fail-tint text-fail", Icon: X },
+  PARTIAL: { label: "Partial", cls: "bg-warn-tint text-warn", Icon: AlertTriangle },
+  ERROR: { label: "Not run", cls: "bg-fail-tint text-fail", Icon: X },
+  RUNNING: { label: "Running", cls: "bg-skip-tint text-skip", Icon: MinusCircle },
+};
+
+const KIND_LABEL: Record<string, string> = {
+  MESSAGE_WITHOUT_INBOX: "Message never taken in",
+  POSTED_WITHOUT_ERP_DOC: "Posted, but no ERP document",
+  ERP_DOC_WITHOUT_POSTED: "ERP document, invoice not posted",
+  DUPLICATE_ERP_DOC: "Duplicate ERP documents",
+  AMOUNT_MISMATCH: "Amount differs from ERP",
+  DOC_NO_MISMATCH: "ERP document number differs",
+};
+
+function Reconciliation({ entity, canRun }: { entity: string; canRun: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["recon", entity],
+    queryFn: () => api<{ runs: ReconRun[] }>(`/ops/reconciliation?limit=14${entity ? `&entity=${entity}` : ""}`),
+    refetchInterval: 60_000,
+  });
+  const [err, setErr] = React.useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: (e: string) => api<ReconRun>("/ops/reconciliation/run", { method: "POST", json: { entity: e } }),
+    onSuccess: () => {
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["recon"] });
+      qc.invalidateQueries({ queryKey: ["ops"] });
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Run failed"),
+  });
+  const latest: ReconRun[] = [];
+  for (const r of q.data?.runs ?? []) if (!latest.some((x) => x.entity_id === r.entity_id)) latest.push(r);
+
+  return (
+    <Card className="mt-4 p-3">
+      <h2 className="font-semibold">Daily reconciliation</h2>
+      <p className="mb-2 text-[0.86rem] text-muted">
+        The lost-invoice net: every message received has an inbox row, every posted invoice has its ERP document, and
+        every pipeline ERP document has a posted invoice. Runs at 23:30 entity time; missed days are caught up.
+      </p>
+      {err ? <div className="mb-2"><Banner tone="fail">{err}</Banner></div> : null}
+      {q.isLoading ? (
+        <Skeleton className="h-16" />
+      ) : latest.length === 0 ? (
+        <p className="py-3 text-muted">No runs yet. The first runs tonight at 23:30.</p>
+      ) : (
+        <div className="space-y-3">
+          {latest.map((r) => {
+            const s = RECON[r.status];
+            return (
+              <div key={r.run_id} className="rounded-md border border-border p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-semibold">{r.entity_id}</span>
+                  <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.86rem] font-semibold", s.cls)}>
+                    <s.Icon className="size-3.5" aria-hidden /> {s.label}
+                    {r.differences ? ` · ${r.differences}` : ""}
+                  </span>
+                  <span className="num text-[0.86rem] text-muted">
+                    {r.business_date} · {r.trigger} · finished {r.finished_at ? dateTime(r.finished_at) : "—"}
+                  </span>
+                  <span className="num ml-auto text-[0.86rem] text-fg-2">
+                    messages {r.counts.messages ?? "—"} · inbox {r.counts.inbox_matched ?? 0} · posted{" "}
+                    {r.counts.posted ?? 0} · ERP docs {r.counts.erp_documents ?? 0}
+                  </span>
+                  {canRun ? (
+                    <Button size="sm" variant="secondary" disabled={run.isPending} onClick={() => run.mutate(r.entity_id)}>
+                      <Play className="size-3.5" aria-hidden /> Run now
+                    </Button>
+                  ) : null}
+                </div>
+                {r.error ? <p className="mt-2 text-[0.93rem] text-fail">{r.error}</p> : null}
+                {r.skipped.map((k) => (
+                  <p key={k} className="mt-2 text-[0.93rem] text-warn">▲ Not checked: {k}</p>
+                ))}
+                {r.items?.length ? (
+                  <table className="mt-2 w-full text-[0.93rem]">
+                    <thead className="text-left text-[0.8rem] text-muted">
+                      <tr>
+                        <th className="py-1 font-medium">Difference</th>
+                        <th className="font-medium">Reference</th>
+                        <th className="font-medium">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {r.items.map((i, n) => (
+                        <tr key={n} className="border-t border-border align-top">
+                          <td className="py-1.5 pr-3">
+                            <span className={cn("mr-1.5 whitespace-nowrap rounded px-1 text-[0.8rem] font-semibold",
+                              i.severity === "critical" ? "bg-fail-tint text-fail" : "bg-warn-tint text-warn")}>
+                              {i.severity === "critical" ? "✕ critical" : "▲ high"}
+                            </span>
+                            {KIND_LABEL[i.kind] ?? i.kind}
+                          </td>
+                          <td className="num py-1.5 pr-3 font-mono text-[0.86rem]">
+                            {i.invoice_id ? (
+                              <Link className="text-accent underline" href={`/invoices/${i.invoice_id}`}>{i.invoice_id.slice(0, 8)}</Link>
+                            ) : null}
+                            {i.message_id ? <span>{i.message_id}</span> : null}
+                            {i.erp_doc_no ? <span className="block text-muted">{i.erp_doc_no}</span> : null}
+                          </td>
+                          <td className="py-1.5 text-fg-2">{i.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : r.status === "OK" ? (
+                  <p className="mt-2 text-[0.93rem] text-pass">✓ Every message, posting and ERP document matched.</p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }

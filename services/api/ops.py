@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from libs.core import sla
 from libs.core.entities import SLT, entity
+from libs.core.reconcile import latest_runs
 from libs.db import models as m
 
 TERMINAL_ACTIONS = {"POSTED", "REJECT", "CONFIRM_DUPLICATE"}
@@ -145,4 +146,34 @@ def metrics(session: Session, entities: list[str], now: datetime) -> dict[str, A
             "capacity_per_hour": capacity_per_h,
         },
         "queue_by_reason": [{"reason": r, "count": c} for r, c in by_reason.most_common()],
+        "reconciliation": [run_view(r, items=False) for r in latest_runs(session, entities)],
     }
+
+
+def run_view(r: m.ReconciliationRun, items: bool = True) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "run_id": r.run_id,
+        "entity_id": r.entity_id,
+        "business_date": r.business_date.isoformat(),
+        "trigger": r.trigger,
+        "status": r.status,
+        "differences": r.differences,
+        "counts": r.counts,
+        "skipped": r.skipped,
+        "error": r.error,
+        "started_at": r.started_at.isoformat(),
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+    }
+    if items:
+        out["items"] = [
+            {
+                "kind": i.kind,
+                "severity": i.severity,
+                "invoice_id": i.invoice_id,
+                "message_id": i.message_id,
+                "erp_doc_no": i.erp_doc_no,
+                "detail": i.detail,
+            }
+            for i in r.items
+        ]
+    return out

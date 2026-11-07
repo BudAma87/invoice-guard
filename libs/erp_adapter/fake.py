@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -165,6 +166,7 @@ class FakeERP:
     items: dict[str, Item] = field(default_factory=_seed_items)
     docs: dict[str, ERPDoc] = field(default_factory=dict)  # doc_no -> doc
     post_calls: int = 0
+    clock: Callable[[], datetime] | None = None  # tests pin "now" for posted_at
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def __post_init__(self) -> None:
@@ -221,6 +223,7 @@ class FakeERP:
                 inv.entity_id,
                 inv.total_minor,
                 inv.currency,
+                posted_at=(self.clock() if self.clock else datetime.now(UTC)).isoformat(),
             )
             self.docs[doc.doc_no] = doc
             self._save()
@@ -228,6 +231,20 @@ class FakeERP:
                 self.faults.timeout_after_accept -= 1
                 raise ERPUnavailable("timeout after accept", ambiguous=True)
             return doc
+
+    async def list_documents(
+        self, entity_id: str, since: datetime, until: datetime
+    ) -> list[ERPDoc]:
+        self._check()
+        self._load()
+        out = []
+        for d in self.docs.values():
+            if d.entity_id != entity_id or not d.posted_at:
+                continue
+            at = datetime.fromisoformat(d.posted_at)
+            if since <= at < until:
+                out.append(d)
+        return out
 
     def docs_for(self, ext_ref: str) -> list[ERPDoc]:
         self._load()

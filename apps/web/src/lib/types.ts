@@ -210,6 +210,7 @@ export interface OpsMetrics {
     capacity_per_hour: number;
   };
   queue_by_reason: { reason: string; count: number }[];
+  reconciliation: ReconRun[];
 }
 
 export interface Overlay {
@@ -217,4 +218,30 @@ export interface Overlay {
   label: string;
   evidence: Evidence;
   low: boolean;
+}
+
+export type ReconStatus = "RUNNING" | "OK" | "DIFFERENCES" | "PARTIAL" | "ERROR";
+
+export interface ReconItem {
+  kind: string;
+  severity: "critical" | "high";
+  invoice_id: string | null;
+  message_id: string | null;
+  erp_doc_no: string | null;
+  detail: string;
+}
+
+export interface ReconRun {
+  run_id: string;
+  entity_id: string;
+  business_date: string;
+  trigger: string;
+  status: ReconStatus;
+  differences: number;
+  counts: { messages: number | null; inbox_matched: number; posted: number; erp_documents: number };
+  skipped: string[];
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+  items?: ReconItem[];
 }

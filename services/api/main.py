@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -17,7 +18,9 @@ from sqlalchemy.orm.exc import StaleDataError
 from libs.config import settings
 from libs.core import review as rv
 from libs.core.convert import BadCorrection
-from libs.core.runtime import erp_client
+from libs.core.entities import entity as entity_of
+from libs.core.reconcile import run_reconciliation
+from libs.core.runtime import erp_client, message_ledger
 from libs.core.service import open_task
 from libs.core.store import ObjectStore, verify
 from libs.db import models as m
@@ -357,3 +360,54 @@ def ops_metrics(
         raise HTTPException(403, "Supervisor role required")
     ents = [entity] if entity and entity in user.entities else sorted(user.entities)
     return ops.metrics(session, ents, utcnow())
+
+
+def _ops_user(user: rv.User) -> None:
+    if not (user.can("supervisor") or user.can("auditor")):
+        raise HTTPException(403, "Supervisor role required")
+
+
+@app.get("/ops/reconciliation")
+def reconciliation_runs(
+    entity: str | None = None,
+    limit: int = Query(14, ge=1, le=100),
+    session: Session = Depends(db),
+    user: rv.User = Depends(current_user),
+) -> dict:
+    """Latest runs, newest first, with their differences."""
+    _ops_user(user)
+    ents = [entity] if entity and entity in user.entities else sorted(user.entities)
+    runs = session.scalars(
+        select(m.ReconciliationRun)
+        .where(m.ReconciliationRun.entity_id.in_(ents))
+        .order_by(m.ReconciliationRun.business_date.desc(), m.ReconciliationRun.started_at.desc())
+        .limit(limit)
+    ).all()
+    return {"runs": [ops.run_view(r) for r in runs]}
+
+
+class ReconcileIn(BaseModel):
+    entity: str
+    date: str | None = None  # YYYY-MM-DD, default today in the entity's time zone
+
+
+@app.post("/ops/reconciliation/run")
+async def reconciliation_run_now(
+    body: ReconcileIn, session: Session = Depends(db), user: rv.User = Depends(current_user)
+) -> dict:
+    """Supervisor-triggered run (e.g. after fixing a difference). Auditors can only read."""
+    if not user.can("supervisor"):
+        raise HTTPException(403, "Supervisor role required")
+    if body.entity not in user.entities:
+        raise rv.NotFound("Entity not found")
+    now = utcnow()
+    try:
+        day = date.fromisoformat(body.date) if body.date else entity_of(body.entity).today(now)
+    except ValueError as e:
+        raise HTTPException(422, "date must be YYYY-MM-DD") from e
+    run = await run_reconciliation(
+        session, erp_client(), message_ledger(), body.entity, day, now, trigger="manual"
+    )
+    session.commit()
+    record = ops.run_view(run)
+    return record
