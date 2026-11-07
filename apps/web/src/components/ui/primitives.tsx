@@ -2,7 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { AlertTriangle, Check, Clock, MinusCircle, PauseCircle, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, Info, MinusCircle, PauseCircle, X } from "lucide-react";
 import * as React from "react";
 
 import { cn, relTime } from "@/lib/format";
@@ -165,7 +165,11 @@ export function Banner({
   }[tone];
   return (
     <div role="status" className={cn("flex items-center gap-3 rounded-md border px-3 py-2 text-[0.93rem]", t)}>
-      <AlertTriangle aria-hidden className="size-4 shrink-0" />
+      {tone === "info" ? (
+        <Info aria-hidden className="size-4 shrink-0" />
+      ) : (
+        <AlertTriangle aria-hidden className="size-4 shrink-0" />
+      )}
       <div className="flex-1">{children}</div>
       {action}
     </div>

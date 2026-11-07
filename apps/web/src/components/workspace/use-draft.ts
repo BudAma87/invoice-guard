@@ -45,6 +45,8 @@ export function useDraft(detail: InvoiceDetail | undefined) {
   const [header, setHeader] = React.useState<Header | null>(null);
   const [lines, setLines] = React.useState<DraftLine[]>([]);
   const [overrides, setOverrides] = React.useState<Overrides>({});
+  // Header fields the reviewer explicitly confirmed without changing (e.g. an ambiguous date)
+  const [confirmed, setConfirmed] = React.useState<Set<keyof Header>>(new Set());
   const [check, setCheck] = React.useState<ValidateResponse | null>(null);
   const [checkState, setCheckState] = React.useState<CheckState>("idle");
   const [changedKeys, setChangedKeys] = React.useState<Set<string>>(new Set());
@@ -57,7 +59,7 @@ export function useDraft(detail: InvoiceDetail | undefined) {
     if (!detail) return;
     const key = `${detail.invoice_id}@${detail.version}`;
     if (loadedFor.current === key) return;
-    const dirty = base.current && header && corrections(base.current, header, lines) !== undefined;
+    const dirty = base.current && header && corrections(base.current, header, lines, confirmed) !== undefined;
     if (dirty && loadedFor.current?.startsWith(detail.invoice_id)) {
       loadedFor.current = key; // keep the local draft for comparison (stale banner shows)
       return;
@@ -67,13 +69,14 @@ export function useDraft(detail: InvoiceDetail | undefined) {
     setHeader({ ...detail.header });
     setLines(dl);
     setOverrides({});
+    setConfirmed(new Set());
     loadedFor.current = key;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
 
   const corr = React.useMemo(
-    () => (base.current && header ? corrections(base.current, header, lines) : undefined),
-    [header, lines],
+    () => (base.current && header ? corrections(base.current, header, lines, confirmed) : undefined),
+    [header, lines, confirmed],
   );
   const dirty = corr !== undefined;
 
@@ -166,7 +169,10 @@ export function useDraft(detail: InvoiceDetail | undefined) {
       setHeader({ ...base.current.header });
       setLines(base.current.lines.map((l) => ({ ...l })));
       setOverrides({});
+      setConfirmed(new Set());
     },
+    confirmed,
+    confirmField: (k: keyof Header) => setConfirmed((c) => new Set(c).add(k)),
   };
 }
 
@@ -178,10 +184,11 @@ function corrections(
   base: { header: Header; lines: DraftLine[] },
   header: Header,
   lines: DraftLine[],
+  confirmed: Set<keyof Header> = new Set(),
 ): Corrections | undefined {
   const h: Record<string, unknown> = {};
   (Object.keys(header) as (keyof Header)[]).forEach((k) => {
-    if (header[k] !== base.header[k]) h[k] = header[k];
+    if (header[k] !== base.header[k] || confirmed.has(k)) h[k] = header[k];
   });
   const strip = (l: DraftLine) => Object.fromEntries(LINE_KEYS.map((k) => [k, l[k]]));
   const linesChanged =

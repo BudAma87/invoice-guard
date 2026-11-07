@@ -306,13 +306,22 @@ export function DateCard({ d, draft, results, sel }: {
       <CardTitle group="date" results={rs} />
       <div className="grid grid-cols-[180px_1fr] gap-4">
         <div>
-          <FieldInput field="invoice_date" label="Invoice date" type="date" value={draft.header?.invoice_date ?? ""}
-            sel={sel} conf={d.confidence.invoice_date} minConf={d.min_confidence}
-            onChange={(v) => draft.setHeaderField("invoice_date", v || null)} />
-          {d.date_ambiguous && draft.header?.invoice_date === d.header.invoice_date ? (
-            <p className="mt-1 text-[0.86rem] text-warn">
-              ▲ Printed as {d.evidence.invoice_date?.text ?? "?"} — day/month order unclear. Confirm or correct.
-            </p>
+          <FieldInput field="invoice_date" label="Invoice date (YYYY-MM-DD)" value={draft.header?.invoice_date ?? ""}
+            sel={sel} conf={d.confidence.invoice_date} minConf={d.min_confidence} mono
+            onChange={(v) => draft.setHeaderField("invoice_date", v.trim() || null)} />
+          <p className="mt-1 text-[0.86rem] text-fg-2">{longDate(draft.header?.invoice_date)}</p>
+          {d.date_ambiguous && draft.header?.invoice_date === d.header.invoice_date && !draft.confirmed.has("invoice_date") ? (
+            <div className="mt-1 space-y-1.5">
+              <p className="text-[0.86rem] text-warn">
+                ▲ Printed as <span className="font-mono">{d.evidence.invoice_date?.text ?? "?"}</span> — day/month order is
+                unclear. Read as {longDate(d.header.invoice_date)}.
+              </p>
+              {!sel.readOnly ? (
+                <Button size="sm" variant="secondary" onClick={() => draft.confirmField("invoice_date")}>
+                  Confirm {longDate(d.header.invoice_date)}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <ul>
@@ -336,6 +345,13 @@ export function DateCard({ d, draft, results, sel }: {
       ) : null}
     </Card>
   );
+}
+
+function longDate(iso: string | null | undefined) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "Enter as YYYY-MM-DD";
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "Not a valid date";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 /* ----------------------------------------------------------- total */

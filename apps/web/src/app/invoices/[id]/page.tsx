@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronRight, History, Lock, RotateCcw } from "lucide-react";
+import { ArrowLeft, ChevronRight, History, Lock, RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -216,7 +216,7 @@ export default function WorkspacePage() {
   const erpDown = !d.erp_available || draft.check?.erp_available === false;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       {/* breadcrumb strip */}
       <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
         <Link href={isCheck ? "/queue?kind=check" : "/queue"} className="inline-flex items-center gap-1 text-muted hover:text-fg">
@@ -237,7 +237,7 @@ export default function WorkspacePage() {
       <div className="space-y-2 px-4 pt-2 empty:hidden">
         {done ? (
           <Banner tone="info" action={<Button size="sm" variant="primary" onClick={goNext}>Next invoice <Kbd>N</Kbd></Button>}>
-            <CheckCircle2 className="mr-1 inline size-4" aria-hidden />{done}
+            {done}
           </Banner>
         ) : null}
         {stale ? (

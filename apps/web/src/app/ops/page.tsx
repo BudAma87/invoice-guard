@@ -211,8 +211,8 @@ const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
 function ArrivalsChart({ m }: { m: OpsMetrics }) {
   const data = m.series.hours.map((h, i) => ({ h: hourLabel(h), arrivals: m.series.arrivals[i], processed: m.series.processed[i] }));
   return (
-    <ChartCard title="Arrivals vs processed per hour" sub="The gap between the lines is backlog building up"
-      legend={[{ label: "Arrivals", color: S1 }, { label: "Processed (final state)", color: S2 }]}
+    <ChartCard title="Arrivals vs processed per hour" sub="Processed = reached a final state · the gap is backlog building up"
+      legend={[{ label: "Arrivals", color: S1 }, { label: "Processed", color: S2 }]}
       table={{ head: ["Hour", "Arrivals", "Processed"], rows: data.map((d) => [d.h, d.arrivals, d.processed]) }}>
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
@@ -239,7 +239,7 @@ function ReasonChart({ m }: { m: OpsMetrics }) {
           <BarChart data={data} layout="vertical" margin={{ top: 0, right: 24, bottom: 0, left: 40 }} barCategoryGap={2}>
             <CartesianGrid horizontal={false} stroke="var(--grid)" />
             <XAxis type="number" allowDecimals={false} {...AXIS} />
-            <YAxis type="category" dataKey="reason" width={130} {...AXIS} tick={{ fill: "var(--text-2)", fontSize: 12, fontFamily: "var(--font-mono)" }} />
+            <YAxis type="category" dataKey="reason" width={130} interval={0} {...AXIS} tick={{ fill: "var(--text-2)", fontSize: 12, fontFamily: "var(--font-mono)" }} />
             <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
             <Bar name="Open tasks" dataKey="count" fill={S1} radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}
               className="cursor-pointer" onClick={(d) => router.push(`/queue?reason=${encodeURIComponent((d as unknown as { reason: string }).reason)}`)}
@@ -274,7 +274,7 @@ function BacklogChart({ m }: { m: OpsMetrics }) {
   const cap = m.series.capacity_per_hour;
   return (
     <ChartCard title="Backlog burn-down vs capacity" sub={`Open, not-final invoices · reviewer capacity ≈ ${cap}/h at 2.5 min each`}
-      legend={[{ label: "Backlog", color: S1 }, { label: "Capacity / hour", color: "var(--muted)", dashed: true }]}
+      legend={[{ label: "Backlog", color: S1 }, { label: "Capacity", color: "var(--muted)", dashed: true }]}
       table={{ head: ["Hour", "Backlog", "Capacity/h"], rows: data.map((d) => [d.h, d.backlog, cap]) }}>
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>

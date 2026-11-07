@@ -57,8 +57,12 @@ function PrefsProvider({ children }: { children: React.ReactNode }) {
   const [density, setDensityState] = React.useState<Density>("comfortable");
   const [userId, setUserId] = React.useState("n.silva");
   const [helpOpen, setHelpOpen] = React.useState(false);
+  // Identity and prefs live in localStorage, which the server can't see: render the app
+  // only after mount so server and client HTML never disagree (no hydration mismatch).
+  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
+    setMounted(true);
     setThemeState(read<Theme>("ig.theme", "system"));
     setDensityState(read<Density>("ig.density", "comfortable"));
     setUserId(getUser());
@@ -91,7 +95,7 @@ function PrefsProvider({ children }: { children: React.ReactNode }) {
     helpOpen,
     setHelpOpen,
   };
-  return <PrefsCtx.Provider value={value}>{children}</PrefsCtx.Provider>;
+  return <PrefsCtx.Provider value={value}>{mounted ? children : null}</PrefsCtx.Provider>;
 }
 
 export function usePrefs() {

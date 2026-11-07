@@ -2,14 +2,12 @@
 
 import { RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import * as React from "react";
-import { Document, Page, pdfjs } from "react-pdf";
 
 import { Button, Skeleton } from "@/components/ui/primitives";
 import { cn, cssId } from "@/lib/format";
-
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-
+import { PdfPageCanvas, usePdfDocument } from "@/lib/pdfjs";
 import type { Overlay } from "@/lib/types";
+
 export type { Overlay };
 
 /**
@@ -29,12 +27,12 @@ export default function PdfViewer({
   onSelect: (field: string) => void;
   title: string;
 }) {
-  const [pages, setPages] = React.useState(0);
+  const { doc, error: err } = usePdfDocument(url);
+  const pages = doc?.numPages ?? 0;
   const [page, setPage] = React.useState(1);
   const [zoom, setZoom] = React.useState(1);
   const [rot, setRot] = React.useState(0);
   const [width, setWidth] = React.useState(640);
-  const [err, setErr] = React.useState<string | null>(null);
   const wrap = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -55,7 +53,6 @@ export default function PdfViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const file = React.useMemo(() => (url ? { url } : null), [url]);
   const pageW = width * zoom;
 
   return (
@@ -86,36 +83,23 @@ export default function PdfViewer({
                 aria-current={page === i + 1 ? "page" : undefined}
                 className={cn("block w-full rounded border bg-surface p-1 text-[0.8rem]", page === i + 1 ? "border-accent" : "border-border")}
               >
-                {file ? (
-                  <Document file={file} loading={null}>
-                    <Page pageNumber={i + 1} width={56} renderTextLayer={false} renderAnnotationLayer={false} />
-                  </Document>
-                ) : null}
+                {doc ? <PdfPageCanvas doc={doc} pageNumber={i + 1} width={56} /> : null}
                 {i + 1}
               </button>
             ))}
           </nav>
         ) : null}
         <div ref={wrap} className="min-h-0 flex-1 overflow-auto bg-surface-3 p-4">
-          {!file ? (
+          {!url ? (
             <div className="grid h-full place-items-center text-muted">No PDF stored for this invoice.</div>
           ) : err ? (
             <div className="grid h-full place-items-center text-fail">Could not load PDF: {err}</div>
+          ) : !doc ? (
+            <Skeleton className="mx-auto aspect-[1/1.414] w-full max-w-[720px]" />
           ) : (
-            <Document
-              file={file}
-              onLoadSuccess={(d) => setPages(d.numPages)}
-              onLoadError={(e) => setErr(e.message)}
-              loading={<Skeleton className="mx-auto aspect-[1/1.414] w-full max-w-[720px]" />}
-            >
-              <div className="relative mx-auto w-fit shadow-pop" style={{ transform: `rotate(${rot}deg)` }}>
-                <Page
-                  pageNumber={page}
-                  width={pageW}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  loading={<Skeleton className="aspect-[1/1.414]" />}
-                />
+            <>
+              <div className="relative mx-auto w-fit bg-white shadow-pop" style={{ transform: `rotate(${rot}deg)` }}>
+                <PdfPageCanvas doc={doc} pageNumber={Math.min(page, pages)} width={pageW} className="block" />
                 <div className="absolute inset-0">
                   {overlays
                     .filter((o) => o.evidence.page === page)
@@ -155,7 +139,7 @@ export default function PdfViewer({
                     })}
                 </div>
               </div>
-            </Document>
+            </>
           )}
         </div>
       </div>

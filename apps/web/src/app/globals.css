@@ -184,11 +184,6 @@ body {
   }
 }
 
-/* react-pdf text layer off; we draw our own evidence overlays */
-.react-pdf__Page__canvas {
-  display: block;
-}
-
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
   background-size: 200% 100%;
