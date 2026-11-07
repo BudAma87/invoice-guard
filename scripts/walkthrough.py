@@ -31,12 +31,22 @@ from services.relay import relay
 from services.worker.pipeline import process_invoice
 
 SPEC = Spec(
-    "walkthrough", "E01", "Ceylon Steel Works", "TIN-114455",
-    f"CSW-{uuid.uuid4().hex[:5].upper()}", "2026-11-06", "LKR", "PO-55821",
-    [("Steel bolt M8 x 40 zinc", "A-100", "5000", "120.00", "600,000.00", None),
-     ("Hex nut M8 grade 8", "B-220", "4000", "45.00", "180,000.00", None),
-     ("Flat washer M8", "C-330", "9000", "12.00", "108,000.00", None)],
-    "888,000.00", "18", "159,840.00",
+    "walkthrough",
+    "E01",
+    "Ceylon Steel Works",
+    "TIN-114455",
+    f"CSW-{uuid.uuid4().hex[:5].upper()}",
+    "2026-11-06",
+    "LKR",
+    "PO-55821",
+    [
+        ("Steel bolt M8 x 40 zinc", "A-100", "5000", "120.00", "600,000.00", None),
+        ("Hex nut M8 grade 8", "B-220", "4000", "45.00", "180,000.00", None),
+        ("Flat washer M8", "C-330", "9000", "12.00", "108,000.00", None),
+    ],
+    "888,000.00",
+    "18",
+    "159,840.00",
     "1,047,480.00",  # printed total has two digits swapped (should be 1,047,840.00)
     conf={"total": 0.78},
 )
@@ -78,14 +88,17 @@ async def main() -> None:
     with SessionLocal() as s:
         r2 = receive(s, store, message_id=msg_id, entity_id="E01", pdf=pdf)
         s.commit()
-    print(f"   duplicate={r2.duplicate}, same invoice_id={r2.invoice_id == iid} → still ONE invoice")
+    same = r2.invoice_id == iid
+    print(f"   duplicate={r2.duplicate}, same invoice_id={same} → still ONE invoice")
 
     step(3, "Worker: extract (model reads PDF) → normalise → enrich → rules → route")
     ext = SidecarExtractor({sha: extraction})  # stands in for Claude in this demo
     state = await process_invoice(SessionLocal, erp, ext, store, utcnow())
     d = api.get(f"/invoices/{iid}", headers=maker).json()
-    print(f"   extracted total {d['header']['total_minor'] / 100:,.2f} LKR, confidence "
-          f"{d['confidence']['total']:.2f}  (threshold {d['min_confidence']})")
+    print(
+        f"   extracted total {d['header']['total_minor'] / 100:,.2f} LKR, confidence "
+        f"{d['confidence']['total']:.2f}  (threshold {d['min_confidence']})"
+    )
     print(f"   {len(d['results'])} rules ran in 4 stages. Problems:")
     show_results(d["results"], only_problems=True)
     print(f"   → routed to {state}; task reasons {d['task']['reasons']}")
@@ -94,8 +107,10 @@ async def main() -> None:
     step(4, "Reviewer (Nimali, maker) claims it from the queue — 15-min lease")
     q = api.get("/queue", headers=maker).json()
     row = next(x for x in q["items"] if x["invoice_id"] == iid)
-    print(f"   queue row: priority {row['priority']:.0f}, SLA {row['sla_state']}, "
-          f"reasons {row['reasons']}")
+    print(
+        f"   queue row: priority {row['priority']:.0f}, SLA {row['sla_state']}, "
+        f"reasons {row['reasons']}"
+    )
     api.post(f"/invoices/{iid}/claim", headers=maker)
     other = api.post(f"/invoices/{iid}/claim", headers={"X-User": "j.perera"})
     print(f"   Janith tries to claim too → HTTP {other.status_code}: {other.json()['detail']}")
@@ -108,11 +123,16 @@ async def main() -> None:
 
     step(6, "Reviewer approves → amount ≥ LKR 1M, so it goes to a checker, not the ERP")
     d = api.get(f"/invoices/{iid}", headers=maker).json()
-    res = api.post(f"/invoices/{iid}/decision",
-                   headers={**maker, "If-Match": str(d["version"])},
-                   json={"action": "approve", "corrections": fix,
-                         "reason_code": "OCR_CORRECTION",
-                         "results_digest": v["results_digest"]})
+    res = api.post(
+        f"/invoices/{iid}/decision",
+        headers={**maker, "If-Match": str(d["version"])},
+        json={
+            "action": "approve",
+            "corrections": fix,
+            "reason_code": "OCR_CORRECTION",
+            "results_digest": v["results_digest"],
+        },
+    )
     print(f"   HTTP {res.status_code} → {res.json()}")
 
     step(7, "Separation of duties: maker cannot check own work")
@@ -128,8 +148,11 @@ async def main() -> None:
     ch = next(e for e in reversed(d["events"]) if e["action"] == "MAKER_APPROVE")
     for k, (old, new) in ch["payload"]["changed"].items():
         print(f"   maker changed {k}: {old / 100:,.2f} → {new / 100:,.2f}")
-    res = api.post(f"/invoices/{iid}/check", headers={**checker, "If-Match": str(d["version"])},
-                   json={"action": "approve", "comment": "Total matches the PDF"})
+    res = api.post(
+        f"/invoices/{iid}/check",
+        headers={**checker, "If-Match": str(d["version"])},
+        json={"action": "approve", "comment": "Total matches the PDF"},
+    )
     print(f"   HTTP {res.status_code} → {res.json()}  (outbox row written in same transaction)")
 
     step(9, "Outbox relay posts to the ERP — looks up external ref first")
@@ -138,9 +161,11 @@ async def main() -> None:
     d = api.get(f"/invoices/{iid}", headers=checker).json()
     print(f"   relay posted {n}; invoice state {d['state']}; ERP document {d['erp_doc_no']}")
     n2 = await relay.run_once(SessionLocal, erp, utcnow())
-    print(f"   relay runs again → posted {n2} more; ERP post calls this run "
-          f"{fake_erp().post_calls - before}; docs for this invoice: "
-          f"{len(fake_erp().docs_for(iid))}")
+    print(
+        f"   relay runs again → posted {n2} more; ERP post calls this run "
+        f"{fake_erp().post_calls - before}; docs for this invoice: "
+        f"{len(fake_erp().docs_for(iid))}"
+    )
 
     step(10, "Audit trail (append-only, hash-chained)")
     for e in d["events"]:
@@ -150,8 +175,10 @@ async def main() -> None:
     with SessionLocal() as s:
         print(f"   hash chain verifies: {verify_chain(s, iid)}")
         inv = s.get(m.Invoice, iid)
-        print(f"\n   FINAL: {SPEC.invoice_no} {inv.state}, ERP {inv.erp_doc_no}, "
-              f"total {inv.total_minor / 100:,.2f} LKR")
+        print(
+            f"\n   FINAL: {SPEC.invoice_no} {inv.state}, ERP {inv.erp_doc_no}, "
+            f"total {inv.total_minor / 100:,.2f} LKR"
+        )
     print(json.dumps({"invoice_id": iid, "open_in_ui": f"http://localhost:3100/invoices/{iid}"}))
 
 

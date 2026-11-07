@@ -10,8 +10,12 @@ target_metadata = Base.metadata
 
 
 def run_offline() -> None:
-    context.configure(url=settings.database_url, target_metadata=target_metadata,
-                      literal_binds=True, render_as_batch=True)
+    context.configure(
+        url=settings.database_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        render_as_batch=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -19,8 +23,11 @@ def run_offline() -> None:
 def run_online() -> None:
     engine = make_engine(settings.database_url)
     with engine.connect() as conn:
-        context.configure(connection=conn, target_metadata=target_metadata,
-                          render_as_batch=conn.dialect.name == "sqlite")
+        context.configure(
+            connection=conn,
+            target_metadata=target_metadata,
+            render_as_batch=conn.dialect.name == "sqlite",
+        )
         with context.begin_transaction():
             context.run_migrations()
 
