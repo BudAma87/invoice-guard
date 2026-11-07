@@ -1,0 +1,60 @@
+"""Pure, versioned rule engine. No I/O, no LLM."""
+
+from libs.rules.config import DEFAULT_RULE_SET, ReasonCode, RuleSetConfig
+from libs.rules.decide import (
+    Override,
+    Route,
+    RouteKind,
+    approval_check,
+    decide,
+    needs_checker,
+    priority,
+)
+from libs.rules.engine import diff_results, evaluate
+from libs.rules.types import (
+    Context,
+    DupCandidate,
+    Group,
+    Invoice,
+    Item,
+    Line,
+    PeriodStatus,
+    POLine,
+    PurchaseOrder,
+    RuleResult,
+    Severity,
+    Stage,
+    Status,
+    TaxLine,
+    Vendor,
+)
+
+__all__ = [
+    "DEFAULT_RULE_SET",
+    "ReasonCode",
+    "RuleSetConfig",
+    "Override",
+    "Route",
+    "RouteKind",
+    "approval_check",
+    "decide",
+    "needs_checker",
+    "priority",
+    "diff_results",
+    "evaluate",
+    "Context",
+    "DupCandidate",
+    "Group",
+    "Invoice",
+    "Item",
+    "Line",
+    "PeriodStatus",
+    "POLine",
+    "PurchaseOrder",
+    "RuleResult",
+    "Severity",
+    "Stage",
+    "Status",
+    "TaxLine",
+    "Vendor",
+]

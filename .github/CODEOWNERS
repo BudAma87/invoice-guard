@@ -1,0 +1,4 @@
+# Replace with your GitHub username / team
+*                                   @your-github-username
+/backend/src/invoice_guard/rules/   @your-github-username
+/backend/src/invoice_guard/llm/     @your-github-username
