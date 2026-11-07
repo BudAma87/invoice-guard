@@ -216,7 +216,7 @@ export default function WorkspacePage() {
   const erpDown = !d.erp_available || draft.check?.erp_available === false;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="relative flex h-screen flex-col overflow-clip">
       {/* breadcrumb strip */}
       <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
         <Link href={isCheck ? "/queue?kind=check" : "/queue"} className="inline-flex items-center gap-1 text-muted hover:text-fg">
@@ -283,7 +283,7 @@ export default function WorkspacePage() {
               <Button size="sm" variant="ghost" className="my-1 ml-auto" onClick={draft.reset}><RotateCcw className="size-3.5" /> Discard edits</Button>
             ) : null}
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-bg p-3">
+          <div className="relative min-h-0 flex-1 space-y-3 overflow-auto bg-bg p-3">
             {tab === "audit" ? (
               <AuditTrail events={d.events} />
             ) : isCheck ? (

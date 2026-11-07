@@ -12,6 +12,51 @@ Built to the [Invoice Validation Pipeline TSD v2](docs/TSD_v2.pdf).
 
 ---
 
+## Screenshots
+
+Captured from the demo data in a real Chrome (1440 × 900).
+
+**Review queue** — breached SLAs pinned first, then by risk priority; reason chips say why
+each invoice needs a person; "Next invoice" claims the top task for 15 minutes.
+
+![Review queue](docs/images/01-review-queue.png)
+
+**Review workspace** — the TSD wireframe invoice. PDF evidence on the left: the selected
+field's source box is outlined in the accent colour (low-confidence boxes are amber). On
+the right, every failing rule is listed, in the order people fix them. Approve stays
+disabled until each failure is fixed or overridden.
+
+![Workspace with exceptions](docs/images/02-workspace-exceptions.png)
+
+**After the reviewer's fixes** — date confirmed, unmatched line removed, total corrected,
+closed period overridden with `PERIOD_CLOSED`. Each edit re-ran the same rules the pipeline
+ran; the reconciliation strip now shows `Diff 0.00 ✓` and Approve is enabled.
+
+![Workspace ready to approve](docs/images/03-workspace-fixed-ready-to-approve.png)
+
+**Duplicate compare** — a re-scan of an invoice already posted. Both PDFs side by side with
+a field-by-field diff; `DUP_EXACT` blocks approval, so the choices are confirm or reject.
+
+![Duplicate compare](docs/images/04-duplicate-compare.png)
+
+**Checker view** — an invoice above LKR 1M approved by Nimali waits for a second person.
+Kasun sees the maker's reason, comment, changes and overrides, and can only approve or
+send back.
+
+![Checker view](docs/images/05-checker-view.png)
+
+**Ops dashboard** — KPI tiles with drill-down, arrivals vs processed, queue depth by
+reason, reviewer throughput, backlog against capacity. Every chart has a table view.
+
+![Ops dashboard](docs/images/06-ops-dashboard.png)
+
+**Dark theme, line items** — per-line PO match, quantity vs open PO quantity, price
+variance against the PO, each failing rule explained under its line.
+
+![Dark theme line items](docs/images/07-dark-theme-line-items.png)
+
+---
+
 ## Quick start (no Docker, no API key)
 
 ```bash
@@ -145,6 +190,8 @@ built around speed and trust:
 | Browser run | Workspace crashed: Next's webpack re-bundling `pdfjs-dist` v5 throws `Object.defineProperty called on non-object` | Dropped `react-pdf`; PDF.js loads unbundled as a native ES module from `/public/pdfjs` |
 | Browser run | Hydration mismatch on every page (identity lives in `localStorage`, which the server can't see) | App renders after mount |
 | Browser run | A reviewer couldn't confirm an ambiguous date that was already right (no change → no correction sent) | "Confirm 3 October 2026" button; ISO date text input instead of the locale date picker, which itself showed `10/03/2026` |
+| Screenshots | The whole page scrolled when a field got focus, pushing the header off screen: screen-reader-only (absolutely positioned) text inside the scrolling panel had no positioned ancestor and stretched the document | Scroll containers are `relative` and clip their overflow; the page itself never scrolls |
+| Screenshots | A card still said "Fail" after its only failure was overridden, and a confirmed date still showed its 71% confidence | Card shows "Pass · with override"; confirmed or corrected fields show 100% |
 | SQLite | SQLite drops `tzinfo`, breaking lease and SLA comparisons | `UTCDateTime` column type: always aware UTC in Python |
 | SQLAlchemy | Replacing invoice lines hit `UNIQUE(invoice_id, line_no)` (inserts flush before deletes) | Flush deletes before re-inserting |
 | Claude API | Forced `tool_choice` returns 400 on current models | Structured outputs (`messages.parse(output_format=…)`) |

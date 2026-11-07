@@ -128,12 +128,19 @@ export function CheckerDiff({ d }: { d: InvoiceDetail }) {
             const b = before.get(r.key);
             const o = t.overrides?.[r.key];
             return (
-              <li key={r.key} className="flex items-center gap-2 text-[0.93rem]">
-                {b ? <StatusBadge status={b.status} /> : <span className="w-14" />}
-                <span aria-hidden>→</span>
-                <StatusBadge status={r.status} />
-                <span className="flex-1">{RULE_LABEL[r.code] ?? r.code}{r.line ? ` · L${r.line}` : ""}</span>
-                {o ? <span className="text-[0.86rem] text-accent">override: {o.reason_code} — {REASON_LABEL[o.reason_code] ?? ""}{o.comment ? ` (“${o.comment}”)` : ""}</span> : null}
+              <li key={r.key} className="text-[0.93rem]">
+                <div className="flex items-center gap-2">
+                  {b ? <StatusBadge status={b.status} /> : <span className="w-14" />}
+                  <span aria-hidden>→</span>
+                  <StatusBadge status={r.status} />
+                  <span className="font-medium">{RULE_LABEL[r.code] ?? r.code}{r.line ? ` · L${r.line}` : ""}</span>
+                </div>
+                {o ? (
+                  <p className="mt-0.5 pl-1 text-[0.86rem] text-accent">
+                    Override <span className="font-mono">{o.reason_code}</span> — {REASON_LABEL[o.reason_code] ?? ""}
+                    {o.comment ? ` (“${o.comment}”)` : ""}
+                  </p>
+                ) : null}
               </li>
             );
           })}

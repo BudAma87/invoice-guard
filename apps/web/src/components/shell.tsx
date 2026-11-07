@@ -50,7 +50,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [router, setHelpOpen]);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="relative flex h-screen overflow-clip">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-surface focus:p-2">
         Skip to content
       </a>
@@ -95,7 +95,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main id="main" className="min-w-0 flex-1">
+      <main id="main" className="relative min-w-0 flex-1 overflow-y-auto">
         {children}
       </main>
       <ShortcutHelp open={helpOpen} onOpenChange={setHelpOpen} />

@@ -117,8 +117,15 @@ function RuleRow({ r, changed }: { r: RuleResult; changed: boolean }) {
   );
 }
 
-function CardTitle({ group, results, right }: { group: Group; results: RuleResult[]; right?: React.ReactNode }) {
-  const worst = results.some((r) => r.status === "FAIL")
+function CardTitle({ group, results, right, overrides = {} }: {
+  group: Group;
+  results: RuleResult[];
+  right?: React.ReactNode;
+  overrides?: Record<string, unknown>;
+}) {
+  const open = results.filter((r) => !(r.status === "FAIL" && overrides[r.key]));
+  const overridden = open.length < results.length && !open.some((r) => r.status !== "PASS");
+  const worst = open.some((r) => r.status === "FAIL")
     ? "FAIL"
     : results.some((r) => r.status === "SKIPPED")
       ? "SKIPPED"
@@ -128,7 +135,11 @@ function CardTitle({ group, results, right }: { group: Group; results: RuleResul
   return (
     <div className="mb-2 flex items-center gap-2">
       <h3 className="font-semibold">{GROUP_LABEL[group]}</h3>
-      <StatusBadge status={worst} blocking={results.some((r) => r.severity === "BLOCK" && r.status === "FAIL")} />
+      {overridden ? (
+        <Chip tone="accent">Pass · with override</Chip>
+      ) : (
+        <StatusBadge status={worst} blocking={results.some((r) => r.severity === "BLOCK" && r.status === "FAIL")} />
+      )}
       <div className="ml-auto">{right}</div>
     </div>
   );
@@ -147,6 +158,7 @@ function FieldInput({
   mono,
   type = "text",
   className,
+  placeholder,
 }: {
   field: string;
   label: string;
@@ -158,6 +170,7 @@ function FieldInput({
   mono?: boolean;
   type?: string;
   className?: string;
+  placeholder?: string;
 }) {
   const low = conf !== undefined && conf < minConf;
   return (
@@ -175,6 +188,7 @@ function FieldInput({
         id={`f-${cssId(field)}`}
         type={type}
         value={value}
+        placeholder={placeholder}
         readOnly={sel.readOnly}
         onFocus={() => sel.onSelect(field)}
         onChange={(e) => onChange(e.target.value)}
@@ -303,11 +317,12 @@ export function DateCard({ d, draft, results, sel }: {
   const ov = draft.overrides["DATE_PERIOD_OPEN"];
   return (
     <Card className="p-3">
-      <CardTitle group="date" results={rs} />
+      <CardTitle group="date" results={rs} overrides={draft.overrides} />
       <div className="grid grid-cols-[180px_1fr] gap-4">
         <div>
-          <FieldInput field="invoice_date" label="Invoice date (YYYY-MM-DD)" value={draft.header?.invoice_date ?? ""}
-            sel={sel} conf={d.confidence.invoice_date} minConf={d.min_confidence} mono
+          <FieldInput field="invoice_date" label="Invoice date" placeholder="YYYY-MM-DD" value={draft.header?.invoice_date ?? ""}
+            sel={sel} minConf={d.min_confidence} mono
+            conf={draft.confirmed.has("invoice_date") || draft.header?.invoice_date !== d.header.invoice_date ? 1 : d.confidence.invoice_date}
             onChange={(v) => draft.setHeaderField("invoice_date", v.trim() || null)} />
           <p className="mt-1 text-[0.86rem] text-fg-2">{longDate(draft.header?.invoice_date)}</p>
           {d.date_ambiguous && draft.header?.invoice_date === d.header.invoice_date && !draft.confirmed.has("invoice_date") ? (
@@ -466,7 +481,7 @@ export function LinesGrid({ d, draft, results, sel }: {
               <th className="w-28 py-1 text-right font-medium">Qty / open</th>
               <th className="w-36 py-1 text-right font-medium">Unit price / PO</th>
               <th className="w-28 py-1 text-right font-medium">Amount</th>
-              <th className="w-24 py-1 font-medium">Status</th>
+              <th className="w-24 py-1 pl-3 font-medium">Status</th>
               <th className="w-16" />
             </tr>
           </thead>
@@ -489,7 +504,7 @@ export function LinesGrid({ d, draft, results, sel }: {
                       <div className="mt-0.5 flex items-center gap-1.5 text-[0.8rem] text-muted">
                         <CellInput field={`line:${n}:item_code`} value={l.item_code ?? ""} sel={sel} small mono placeholder="item code"
                           onChange={(v) => draft.setLine(l._id, { item_code: v || null })} />
-                        {cand ? <span>→ PO line {cand.line_no} · {cand.item_code}</span> : null}
+                        {cand ? <span className="whitespace-nowrap">→ PO line {cand.line_no}</span> : null}
                         {match?.status === "FAIL" && !sel.readOnly ? (
                           <Button size="sm" variant="secondary" className="h-6" onClick={() => setPicker(l)}>
                             <Link2 className="size-3.5" aria-hidden /> Pick a PO line
@@ -518,7 +533,7 @@ export function LinesGrid({ d, draft, results, sel }: {
                         low={(lineConf(n, "amount") ?? 1) < d.min_confidence}
                         onChange={(m) => draft.setLine(l._id, { amount_minor: m })} />
                     </td>
-                    <td className="py-1.5 pl-2">
+                    <td className="py-1.5 pl-3">
                       <StatusBadge status={st} />
                     </td>
                     <td className="py-1.5">
@@ -597,7 +612,7 @@ function CellInput({ field, value, onChange, sel, right, mono, small, placeholde
         "w-full rounded border border-transparent bg-transparent px-1 py-0.5 hover:border-border-strong focus:border-accent focus:bg-surface focus:outline-none",
         right && "text-right",
         mono && "num font-mono",
-        small && "w-28 text-[0.8rem]",
+        small && "w-24 text-[0.8rem]",
         low && "border-warn-line bg-warn-tint/50",
         sel.selected === field && "border-accent bg-accent-tint/50",
       )}
