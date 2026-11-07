@@ -9,6 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 from enum import StrEnum
+from typing import Protocol
 
 from libs.core.entities import Entity
 
@@ -109,3 +110,41 @@ def escalation_level(ent: Entity, ratio: float, at: datetime) -> int:
 def hold_until(ent: Entity, now: datetime) -> datetime:
     """Max hold: 3 business days."""
     return add_business_seconds(ent, now, 3 * (ent.close_h - ent.open_h) * HOUR)
+
+
+# --------------------------------------------------------------------------- per-task clock
+# The SLA clock counts business time since the task was created, minus time on hold.
+# These read only the task, so they are right even before the scheduler has run.
+
+
+class _TaskLike(Protocol):
+    entity_id: str
+    created_at: datetime
+    sla_seconds: int
+    sla_paused_seconds: int
+    hold_started_at: datetime | None
+    hold_until: datetime | None
+
+
+def on_hold(task: _TaskLike, now: datetime) -> bool:
+    return bool(task.hold_until and task.hold_started_at and task.hold_until > now)
+
+
+def paused_seconds(ent: Entity, task: _TaskLike, now: datetime) -> float:
+    """Banked pause + the current (or expired but not yet banked) hold."""
+    paused = float(task.sla_paused_seconds or 0)
+    if task.hold_started_at and task.hold_until:
+        paused += business_seconds_between(ent, task.hold_started_at, min(now, task.hold_until))
+    return paused
+
+
+def task_ratio(ent: Entity, task: _TaskLike, now: datetime) -> float:
+    used = business_seconds_between(ent, task.created_at, now) - paused_seconds(ent, task, now)
+    return max(0.0, used) / (task.sla_seconds or 1)
+
+
+def task_due(ent: Entity, task: _TaskLike, now: datetime) -> datetime:
+    """Due time, pushed out by every second spent on hold."""
+    return add_business_seconds(
+        ent, task.created_at, task.sla_seconds + paused_seconds(ent, task, now)
+    )

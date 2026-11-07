@@ -77,10 +77,27 @@ async def seed() -> None:
             .where(m.ReviewTask.status == "OPEN")
             .order_by(m.ReviewTask.created_at)
         ).all()
-        for t, hours in zip(tasks, (10, 6.5, 3), strict=False):
-            t.created_at -= timedelta(hours=hours * 2.5)
-            t.sla_due_at -= timedelta(hours=hours * 2.5)
+        # Target SLA used, in business time (weekends and nights don't count):
+        # 160 % = second escalation, 110 % = breached, 80 % = warned.
+        from libs.core import sla
+        from libs.core.entities import entity
+
+        now = utcnow()
+        for t, target in zip(tasks, (1.6, 1.1, 0.8), strict=False):
+            ent = entity(t.entity_id)
+            while sla.task_ratio(ent, t, now) < target:
+                t.created_at -= timedelta(minutes=15)
+            t.sla_due_at = sla.task_due(ent, t, now)
         s.commit()
+
+    # One SLA scheduler pass: escalations and priorities as the queue would show them.
+    from libs.core.escalation import LogNotifier, deliver_pending, sla_tick
+
+    with SessionLocal() as s:
+        rep = sla_tick(s, utcnow())
+        deliver_pending(s, LogNotifier(), utcnow())
+        s.commit()
+    print(f"SLA pass: escalated {rep.escalated}, notifications {rep.notifications}")
     print(f"\nSeeded {len(SCENARIOS)} invoices into {settings.database_url}")
 
 

@@ -63,8 +63,7 @@ def metrics(session: Session, entities: list[str], now: datetime) -> dict[str, A
     by_reason: Counter[str] = Counter()
     for t in tasks:
         ent = entity(t.entity_id)
-        on_hold = bool(t.hold_until and t.hold_until > now)
-        states[sla.state_of(sla.used_ratio(ent, t.created_at, t.sla_due_at, now), on_hold)] += 1
+        states[sla.state_of(sla.task_ratio(ent, t, now), sla.on_hold(t, now))] += 1
         for r in t.reasons:
             by_reason[r.split(":")[0]] += 1
 

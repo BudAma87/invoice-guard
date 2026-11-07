@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from libs.core import sla
 from libs.core.convert import header_dict, line_dict
 from libs.core.entities import entity
+from libs.core.escalation import compute_priority
 from libs.core.review import User, results_digest
 from libs.core.service import current_results, open_task
 from libs.core.store import sign
@@ -33,8 +34,9 @@ def task_view(t: m.ReviewTask | None, now: datetime, user: User | None = None) -
     if t is None:
         return None
     ent = entity(t.entity_id)
-    on_hold = bool(t.hold_until and t.hold_until > now)
-    ratio = sla.used_ratio(ent, t.created_at, t.sla_due_at, now)
+    on_hold = sla.on_hold(t, now)
+    ratio = sla.task_ratio(ent, t, now)
+    due = sla.task_due(ent, t, now)
     lease_ok = bool(t.assignee and t.lease_until and t.lease_until > now)
     return {
         "task_id": t.task_id,
@@ -42,7 +44,7 @@ def task_view(t: m.ReviewTask | None, now: datetime, user: User | None = None) -
         "status": t.status,
         "reasons": t.reasons,
         "priority": t.priority,
-        "sla_due_at": t.sla_due_at.isoformat(),
+        "sla_due_at": due.isoformat(),
         "sla_ratio": round(ratio, 3),
         "sla_state": sla.state_of(ratio, on_hold),
         "assignee": t.assignee if lease_ok else None,
@@ -51,6 +53,8 @@ def task_view(t: m.ReviewTask | None, now: datetime, user: User | None = None) -
         "claimed_by_me": bool(user and lease_ok and t.assignee == user.id),
         "hold_until": t.hold_until.isoformat() if on_hold and t.hold_until else None,
         "hold_note": t.hold_note,
+        "escalation_level": t.escalation_level or 0,
+        "pool": t.pool,
         "maker_id": t.maker_id,
         "maker_name": user_name(t.maker_id),
         "decision": t.decision,
@@ -66,6 +70,7 @@ def task_view(t: m.ReviewTask | None, now: datetime, user: User | None = None) -
 def queue_row(t: m.ReviewTask, inv: m.Invoice, now: datetime, user: User) -> dict:
     return {
         **(task_view(t, now, user) or {}),
+        "priority": compute_priority(t, inv, now),  # live: rises as the SLA burns
         "invoice_id": inv.invoice_id,
         "state": inv.state,
         "entity_id": inv.entity_id,
