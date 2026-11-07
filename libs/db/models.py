@@ -261,8 +261,13 @@ class ReviewTask(Base):
     sla_due_at: Mapped[datetime] = mapped_column(UTCDateTime())
     sla_seconds: Mapped[int] = mapped_column(Integer)
     hold_until: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    hold_started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     hold_note: Mapped[str | None] = mapped_column(Text)
+    # Business seconds spent on hold (SLA clock paused); credited when a hold ends.
+    sla_paused_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    # 0 none, 1 warned, 2 breached (moved to supervisor pool), 3 finance manager
     escalation_level: Mapped[int] = mapped_column(Integer, default=0)
+    pool: Mapped[str | None] = mapped_column(String(16))  # "supervisor" after a breach
 
     maker_id: Mapped[str | None] = mapped_column(String(64))
     decision: Mapped[str | None] = mapped_column(String(32))
@@ -305,6 +310,32 @@ class InvoiceEvent(Base):
     at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     prev_hash: Mapped[str | None] = mapped_column(String(64))
     hash: Mapped[str] = mapped_column(String(64))
+
+
+class Notification(Base):
+    """Durable, idempotent notification log. One row per (task, kind): an escalation is
+    raised once even if the scheduler runs twice. A sender delivers PENDING rows."""
+
+    __tablename__ = "notification"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("review_task.task_id"), index=True)
+    invoice_id: Mapped[str] = mapped_column(String(36))
+    entity_id: Mapped[str] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(24))  # SLA_WARNING | SLA_BREACH | SLA_ESCALATION
+    channel: Mapped[str] = mapped_column(String(16), default="email")
+    recipients: Mapped[list[Any]] = mapped_column(
+        default=list
+    )  # "user:<id>" | "role:<role>@<entity>"
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(8), default="PENDING")  # PENDING | SENT | FAILED
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+    __table_args__ = (UniqueConstraint("task_id", "kind"),)
 
 
 class OutboxStatus(StrEnum):

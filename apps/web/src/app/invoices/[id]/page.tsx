@@ -255,7 +255,8 @@ export default function WorkspacePage() {
         {erpDown ? <Banner tone="warn">ERP unavailable — reference rules show “not checked” and Approve is disabled.</Banner> : null}
         {draft.checkState === "failed" ? <Banner tone="fail">Results not re-checked (validation call failed). Approve is disabled until a check succeeds.</Banner> : null}
         {narrow ? <Banner tone="info">Read-only on narrow screens. Use a screen at least 1280 px wide to review.</Banner> : null}
-        {task && !task.claimed_by_me && !TERMINAL.has(d.state) ? (
+        {task && !task.claimed_by_me && !TERMINAL.has(d.state) &&
+        !(task.pool === "supervisor" && !task.assignee && !me?.roles.includes("supervisor")) ? (
           task.assignee ? (
             <Banner tone="warn"><Lock className="mr-1 inline size-4" aria-hidden />Claimed by {task.assignee_name} — read-only.</Banner>
           ) : (
@@ -263,6 +264,12 @@ export default function WorkspacePage() {
               Not claimed. Claim it to {isCheck ? "check" : "edit and decide"}.
             </Banner>
           )
+        ) : null}
+        {task?.pool === "supervisor" && !TERMINAL.has(d.state) ? (
+          <Banner tone="fail">
+            SLA breached — escalated to the supervisor pool{task.escalation_level >= 3 ? " and the finance manager" : ""}.
+            {me?.roles.includes("supervisor") ? "" : " Only a supervisor can pick it up once the current claim ends."}
+          </Banner>
         ) : null}
         {task?.hold_until ? <Banner tone="warn">On hold until {new Date(task.hold_until).toLocaleString()} — “{task.hold_note}”. SLA paused.</Banner> : null}
       </div>

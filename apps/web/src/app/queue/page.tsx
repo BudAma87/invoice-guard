@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import { useMe } from "@/components/providers";
-import { ReasonChips } from "@/components/reason-chips";
+import { EscalationChip, ReasonChips } from "@/components/reason-chips";
 import { Banner, Button, Kbd, Skeleton, SlaPill } from "@/components/ui/primitives";
 import { api, ApiError } from "@/lib/api";
 import { cn, dateTime, money } from "@/lib/format";
@@ -106,7 +106,12 @@ function Queue() {
       }),
       col.accessor("sla_state", {
         header: "SLA",
-        cell: (c) => <SlaPill state={c.getValue()} due={c.row.original.sla_due_at} hold={c.row.original.hold_until} />,
+        cell: (c) => (
+          <span className="flex items-center gap-1.5">
+            <SlaPill state={c.getValue()} due={c.row.original.sla_due_at} hold={c.row.original.hold_until} />
+            <EscalationChip level={c.row.original.escalation_level} pool={c.row.original.pool} />
+          </span>
+        ),
       }),
       col.accessor("supplier_name", {
         header: "Supplier",

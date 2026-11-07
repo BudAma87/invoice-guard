@@ -84,9 +84,12 @@ def _lease_valid(task: m.ReviewTask, now: datetime) -> bool:
 
 
 def claim(session: Session, task: m.ReviewTask, user: User, now: datetime) -> m.ReviewTask:
-    if _lease_valid(task, now) and task.assignee != user.id:
+    holder = _lease_valid(task, now) and task.assignee == user.id
+    if _lease_valid(task, now) and not holder:
         raise Conflict(f"Claimed by {task.assignee}", assignee=task.assignee)
     _check_task_role(task, user)
+    if _in_supervisor_pool(task) and not user.can("supervisor") and not holder:
+        raise Forbidden("SLA breached: this invoice is in the supervisor pool")
     task.assignee = user.id
     task.claimed_at = task.claimed_at if task.assignee == user.id and task.claimed_at else now
     task.lease_until = now + timedelta(seconds=lease_seconds())
@@ -106,6 +109,11 @@ def release(session: Session, task: m.ReviewTask, user: User, now: datetime) -> 
     task.assignee = None
     task.lease_until = None
     record_event(session, task.invoice_id, "TASK_RELEASED", user.actor(_role_for(task)))
+
+
+def _in_supervisor_pool(task: m.ReviewTask) -> bool:
+    """Breached review tasks go to supervisors (TSD §8). Checks stay with checkers."""
+    return task.pool == "supervisor" and task.kind != m.TaskKind.CHECK
 
 
 def _role_for(task: m.ReviewTask) -> str:
@@ -139,10 +147,20 @@ def next_task(session: Session, user: User, kind: str, now: datetime) -> m.Revie
             ),
             or_(m.ReviewTask.hold_until.is_(None), m.ReviewTask.hold_until < now),
         )
-        # breached first, then highest priority
-        .order_by((m.ReviewTask.sla_due_at < now).desc(), m.ReviewTask.priority.desc())
+        # supervisors: their pool first; everyone: breached first, then highest priority
+        .order_by(
+            *(
+                [(m.ReviewTask.pool == "supervisor").desc()]
+                if user.can("supervisor") and kind != "check"
+                else []
+            ),
+            (m.ReviewTask.sla_due_at < now).desc(),
+            m.ReviewTask.priority.desc(),
+        )
         .limit(1)
     )
+    if kind != "check" and not user.can("supervisor"):
+        q = q.where(or_(m.ReviewTask.pool.is_(None), m.ReviewTask.pool != "supervisor"))
     if kind == "check":
         q = q.where(or_(m.ReviewTask.maker_id.is_(None), m.ReviewTask.maker_id != user.id))
     if is_postgres(session):
@@ -263,6 +281,9 @@ async def decide(
     if action == "hold":
         if not comment or len(comment.strip()) < 5:
             raise Unprocessable("A note for the supplier query is required")
+        if sla.on_hold(task, now):
+            raise Conflict("Already on hold")
+        task.hold_started_at = now  # SLA clock pauses from here (sla.task_ratio)
         task.hold_until = sla.hold_until(entity(inv.entity_id), now)
         task.hold_note = comment
         record_event(

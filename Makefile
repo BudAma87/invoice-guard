@@ -1,4 +1,4 @@
-.PHONY: install infra-up infra-down fmt lint typecheck test migrate seed api worker relay ingest web web-install
+.PHONY: install infra-up infra-down fmt lint typecheck test migrate seed api worker relay scheduler ingest web web-install
 
 PY ?= uv run
 
@@ -38,6 +38,9 @@ worker:
 
 relay:
 	$(PY) python -m services.relay.relay
+
+scheduler:       ## SLA escalation job, every 5 minutes
+	$(PY) python -m services.scheduler
 
 ingest:
 	$(PY) python -m services.ingest.consumer

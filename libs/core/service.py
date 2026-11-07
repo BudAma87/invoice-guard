@@ -137,8 +137,7 @@ def claim_business_key(session: Session, inv: m.Invoice, key: str | None) -> boo
 def task_priority(
     inv: m.Invoice, task: m.ReviewTask, now: datetime, blocker: bool, dup: float
 ) -> float:
-    ent = entity(inv.entity_id)
-    ratio = sla.used_ratio(ent, task.created_at, task.sla_due_at, now)
+    ratio = sla.task_ratio(entity(inv.entity_id), task, now)
     return priority(
         blocker=blocker,
         sla_used_ratio=ratio,

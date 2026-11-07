@@ -220,3 +220,24 @@ async def test_ops_metrics_requires_supervisor(env: Env, api):
     assert api.get("/ops/metrics", headers=H("n.silva")).status_code == 403
     t = api.get("/ops/metrics", headers=H("a.wijesinghe")).json()["tiles"]
     assert t["received_today"] == 1 and t["posted_today"] == 1 and t["auto_pass_rate"] == 1.0
+
+
+async def test_hold_pauses_sla_and_cannot_stack(env: Env, api):
+    inv = await env.run("low-conf")
+    iid = inv.invoice_id
+    api.post(f"/invoices/{iid}/claim", headers=H("n.silva"))
+    d = api.get(f"/invoices/{iid}", headers=H("n.silva")).json()
+    r = api.post(
+        f"/invoices/{iid}/decision",
+        headers=H("n.silva", d["version"]),
+        json={"action": "hold", "comment": "Asked supplier to confirm qty"},
+    )
+    assert r.status_code == 200, r.text
+    d = api.get(f"/invoices/{iid}", headers=H("n.silva")).json()
+    assert d["task"]["sla_state"] == "on_hold" and d["task"]["hold_until"]
+    r = api.post(
+        f"/invoices/{iid}/decision",
+        headers=H("n.silva", d["version"]),
+        json={"action": "hold", "comment": "again"},
+    )
+    assert r.status_code == 409

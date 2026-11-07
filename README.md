@@ -5,7 +5,8 @@ deterministic rule engine decides whether it can post; anything uncertain goes t
 Built to the [Invoice Validation Pipeline TSD v2](docs/TSD_v2.pdf).
 
 > **Status: Phase 1 (foundation).** State DB, inbox, rule engine, fake ERP, outbox relay,
-> review API and review UI, running on SQLite. Exercised end to end by 68 automated tests,
+> review API, review UI and the SLA escalation job, running on SQLite. Exercised end to end by
+> 79 automated tests,
 > a scripted walkthrough and a real-browser run of the UI.
 > Wired but **not yet exercised against real systems**: the Kafka consumer, the Anthropic
 > extractor (dev uses pre-recorded "sidecar" extractions) and Postgres (`SKIP LOCKED`).
@@ -67,9 +68,10 @@ python -m venv .venv
 # 2. Demo data: runs the REAL pipeline (ingest → worker → rules → relay) on 19 generated PDFs
 .venv/Scripts/python -m scripts.seed_demo
 
-# 3. Three processes, one terminal each
+# 3. Processes, one terminal each
 .venv/Scripts/python -m uvicorn services.api.main:app --port 8000   # review API → :8000/docs
 .venv/Scripts/python -m services.relay.relay                        # posts approved invoices
+.venv/Scripts/python -m services.scheduler                          # SLA escalation, every 5 min
 cd apps/web && npm install && npm run dev                            # review UI  → :3000
 ```
 
@@ -78,6 +80,8 @@ cd apps/web && npm install && npm run dev                            # review UI
   talk to the ERP.
 - The **worker** (`python -m services.worker.pipeline`) is only needed for *new* invoices; the
   seed already processed the demo ones.
+- The **scheduler** escalates overdue reviews; the seed runs one pass so the demo queue already
+  shows a warned, a breached and a twice-escalated invoice.
 - No UI? `python -m scripts.walkthrough` narrates one invoice through every step in the terminal.
 
 ### Try it
@@ -162,6 +166,20 @@ person sees it in the compare view. Dropping it silently would be the "lost invo
   refuses with 409 if results changed since the reviewer last looked (e.g. the PO was consumed).
 - Entity scope is applied in the repository layer; out-of-scope invoices return **404** so
   their existence isn't revealed. Decisions need `If-Match: <version>`; a stale version → 409.
+- **SLA escalation** (`libs/core/escalation.py`, run by `services.scheduler` every 5 minutes).
+  The SLA clock counts business hours on the entity's calendar (8 h, or 4 h in the month-end
+  window) and pauses while a task is on hold (max 3 business days, then it resumes on its own).
+  Each level fires once, never twice:
+
+  | SLA used | Level | Action | Notified |
+  |---|---|---|---|
+  | 75 % | 1 | Warn | Assignee + team lead |
+  | 100 % | 2 | Breach: move to the supervisor pool; reviewers can't claim it (the current holder can finish) | Supervisors + assignee |
+  | 150 % (125 % at month-end) | 3 | Second escalation | Finance manager + supervisors |
+
+  Priority is recomputed on every pass, so the queue reflects time burning. Notifications are
+  rows in `notification`, unique per (task, level) so a re-run or a second scheduler never sends
+  twice; a pluggable sender delivers them (a log sender in dev) and retries up to 5 times.
 
 ### 5. Review UI → designed for a 2.5-minute exception
 
@@ -214,8 +232,8 @@ Written up in [`docs/README.md`](docs/README.md); in short:
 | Gap | Impact | Next step |
 |---|---|---|
 | Dev header auth | Anyone can claim any identity | OIDC (Entra ID / Okta), roles + entities from group claims |
-| SLA **escalation job** not built | Countdown, at-risk and breached states show live, but nobody is notified at 75/100/150% and stored **priority isn't recomputed** as SLA burns | 5-minute scheduler: recompute priority, escalate, resume expired holds |
-| Hold doesn't auto-resume | Held tasks drop out of "Next invoice" until `hold_until` passes; no reminder | Same scheduler |
+| No email/Teams sender | SLA notifications are recorded and logged, not delivered to inboxes | An SMTP or Graph `Notifier`; resolve `role:<role>@<entity>` from the directory |
+| No holiday calendar | SLA business days skip weekends only | Per-entity holiday list in `libs/core/sla.py` |
 | SQLite only tested | `SKIP LOCKED` and partial unique indexes untested on Postgres | Postgres in docker-compose + CI job |
 | Real extraction untested | Sidecars stand in for the model | Run the eval set (500 labelled invoices) through `AnthropicExtractor` |
 | Fake ERP doesn't consume PO balances | Repeat invoices against one PO keep passing `LINE_QTY` | Track invoiced qty, or read it from the real ERP |
@@ -232,6 +250,7 @@ services/ingest/   Kafka consumer → inbox (dedupe by message id + file hash)
 services/worker/   extract → normalise → enrich → validate → route; lease sweeper
 services/api/      FastAPI: queue, invoice, validate, decision, check, ops
 services/relay/    outbox → ERP adapter (the only ERP writer)
+services/scheduler/ SLA escalation every 5 minutes
 libs/rules/        pure, versioned rule engine (no I/O)
 libs/core/         normalisation, enrichment, routing, SLA, review workflow
 libs/erp_adapter/  ERP protocol + fake ERP with fault injection

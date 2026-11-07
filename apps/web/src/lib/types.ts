@@ -68,6 +68,8 @@ export interface Task {
   claimed_by_me: boolean;
   hold_until: string | null;
   hold_note: string | null;
+  escalation_level: number;
+  pool: string | null;
   maker_id: string | null;
   maker_name: string | null;
   decision: string | null;

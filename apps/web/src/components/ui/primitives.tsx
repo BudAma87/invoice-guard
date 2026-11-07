@@ -99,7 +99,7 @@ export function SlaPill({ state, due, hold }: { state: SlaState; due: string; ho
   return (
     <span
       className={cn(
-        "num inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.86rem] font-medium",
+        "num inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.86rem] font-medium",
         s.cls,
       )}
       title={`SLA ${s.label} · due ${new Date(due).toLocaleString()}`}
