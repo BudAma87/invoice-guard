@@ -33,8 +33,16 @@ class Settings(BaseSettings):
     review_lease_s: int = 15 * 60
 
     # Dev auth: when true, the API trusts X-User headers (no OIDC). Never in prod.
-    dev_auth: bool = True
+    # Off by default so a deploy that forgets the variable fails closed (opt in via .env).
+    dev_auth: bool = False
     cors_origins: str = "http://localhost:3000"
+
+    # Signed PDF links. Set from a vault in prod; empty = random per-process key (dev only).
+    signing_secret: str = ""
+    pdf_link_ttl_s: int = 300
+
+    # Per-client request limit for the review API (requests per minute; 0 = off).
+    api_rate_limit_per_min: int = 600
 
 
 settings = Settings()

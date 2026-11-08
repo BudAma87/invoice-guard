@@ -78,7 +78,11 @@ def env(tmp_path: Path) -> Env:
 
 @pytest.fixture
 def api(env: Env, monkeypatch):
+    from libs.config import settings
     from services.api import deps, main
+
+    monkeypatch.setattr(settings, "dev_auth", True)  # tests use the X-User dev identities
+    main.limiter.hits.clear()
 
     def _db():
         s = env.factory()

@@ -8,12 +8,27 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
+import secrets
 import time
 from pathlib import Path
 
 from libs.config import settings
 
-_SECRET = (settings.anthropic_api_key or "dev-signing-secret").encode()  # vault in prod
+# Dedicated key, never derived from another credential. Unset = random per process, so a
+# link only verifies in the process that signed it and no public default key exists.
+_SECRET = settings.signing_secret.encode() if settings.signing_secret else secrets.token_bytes(32)
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_EXT = re.compile(r"[a-z0-9]{1,8}")
+
+
+class BadKey(ValueError):
+    """Object key is not a lowercase sha256 hex digest (or the extension is malformed)."""
+
+
+def valid_sha(sha: str) -> bool:
+    return bool(_SHA256.fullmatch(sha))
 
 
 class ObjectStore:
@@ -21,7 +36,13 @@ class ObjectStore:
         self.root = Path(root or settings.object_store_dir)
 
     def _path(self, sha: str, ext: str = "pdf") -> Path:
-        return self.root / "sha256" / f"{sha}.{ext}"
+        if not valid_sha(sha) or not _EXT.fullmatch(ext):
+            raise BadKey(sha)
+        base = (self.root / "sha256").resolve()
+        p = (base / f"{sha}.{ext}").resolve()
+        if p.parent != base:  # defence in depth: never leave the store
+            raise BadKey(sha)
+        return p
 
     def put(self, data: bytes, ext: str = "pdf") -> str:
         sha = hashlib.sha256(data).hexdigest()
@@ -40,14 +61,15 @@ class ObjectStore:
         return self._path(sha, ext).exists()
 
 
-def sign(sha: str, ttl_s: int = 300, now: float | None = None) -> tuple[int, str]:
-    exp = int((now or time.time()) + ttl_s)
+def sign(sha: str, ttl_s: int | None = None, now: float | None = None) -> tuple[int, str]:
+    exp = int((now or time.time()) + (settings.pdf_link_ttl_s if ttl_s is None else ttl_s))
     sig = hmac.new(_SECRET, f"{sha}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
     return exp, sig
 
 
 def verify(sha: str, exp: int, sig: str, now: float | None = None) -> bool:
-    if exp < (now or time.time()):
+    t = now or time.time()
+    if not valid_sha(sha) or exp < t or exp > t + settings.pdf_link_ttl_s:
         return False
     good = hmac.new(_SECRET, f"{sha}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
     return hmac.compare_digest(good, sig)

@@ -67,6 +67,7 @@ def show_results(results: list[dict], only_problems: bool = False) -> None:
 async def main() -> None:
     Base.metadata.create_all(engine)
     store, erp = ObjectStore(), erp_client()
+    settings.dev_auth = True  # in-process demo uses the X-User dev identities
     api = TestClient(app)
     maker = {"X-User": "n.silva"}
     checker = {"X-User": "k.fernando"}
