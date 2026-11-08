@@ -9,7 +9,11 @@ updates:
     # Majors that break the build: migrate deliberately, not via an automatic PR.
     #  typescript 7: typescript-eslint does not support it yet (lint crashes)
     #  @tanstack/react-table 9: useReactTable / getCoreRowModel removed (build fails)
+    #  pdfjs-dist 6: isEvalSupported and PDFDocumentProxy.destroy removed (typecheck fails);
+    #    the viewer is security-sensitive, so migrate it with a browser check
     ignore:
+      - dependency-name: pdfjs-dist
+        update-types: ["version-update:semver-major"]
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
       - dependency-name: "@tanstack/react-table"
