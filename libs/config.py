@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     kafka_topic_posted: str = "invoices.posted"
     kafka_topic_dlq: str = "invoices.dlq"
 
+    # Ingest limits. A message may carry the PDF inline (pdf_hex) or name a file; a named file
+    # must sit inside this spool directory (empty = file references refused).
+    ingest_spool_dir: str = ""
+    ingest_max_pdf_bytes: int = 20 * 1024 * 1024
+
     # Reconciliation: where "what the channel received" is read from (file | kafka | none)
     message_ledger: str = "file"
 
