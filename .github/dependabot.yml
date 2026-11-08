@@ -6,6 +6,14 @@ updates:
   - package-ecosystem: npm
     directory: /apps/web
     schedule: { interval: weekly }
+    # Majors that break the build: migrate deliberately, not via an automatic PR.
+    #  typescript 7: typescript-eslint does not support it yet (lint crashes)
+    #  @tanstack/react-table 9: useReactTable / getCoreRowModel removed (build fails)
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
