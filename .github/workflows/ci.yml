@@ -68,5 +68,11 @@ jobs:
         working-directory: apps/web
         run: npm audit --omit=dev --audit-level=high
       - name: Secret scan
+        # The container runs as another user than the checkout's owner, so git inside it would
+        # refuse the repo ("dubious ownership"); mark /repo safe via git's env config.
         run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0             git /repo --redact --no-banner
+          docker run --rm -v "$PWD:/repo" \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/repo \
+            ghcr.io/gitleaks/gitleaks:v8.28.0 git /repo --redact --no-banner
